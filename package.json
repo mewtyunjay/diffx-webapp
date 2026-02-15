@@ -1,0 +1,15 @@
+{
+  "name": "diffx",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "backend",
+    "shared/contracts"
+  ],
+  "scripts": {
+    "dev:frontend": "bun --cwd frontend run dev",
+    "dev:backend": "bun --cwd backend run dev",
+    "build:frontend": "bun --cwd frontend run build",
+    "build:backend": "bun --cwd backend run build"
+  }
+}
