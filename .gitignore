@@ -1,8 +1,6 @@
-# Workspace dependencies
 node_modules/
 **/node_modules/
 
-# Build/test outputs
 dist/
 out/
 dist-ssr/
@@ -10,12 +8,10 @@ coverage/
 *.tsbuildinfo
 *.tgz
 
-# Env files
 .env
 .env.*
 !.env.example
 
-# Logs and reports
 logs/
 *.log
 npm-debug.log*
@@ -25,13 +21,11 @@ pnpm-debug.log*
 lerna-debug.log*
 report.*.json
 
-# Caches
 .cache/
 **/.vite/
 .eslintcache
 *.lcov
 
-# Editor/OS
 .vscode/*
 !.vscode/extensions.json
 .idea/

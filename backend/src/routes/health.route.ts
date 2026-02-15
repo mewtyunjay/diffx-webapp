@@ -1,3 +1,4 @@
+// Serves service-liveness data; flow is GET /api/health -> typed HealthResponse JSON.
 import { Router } from "express";
 import type { HealthResponse } from "@diffx/contracts";
 
