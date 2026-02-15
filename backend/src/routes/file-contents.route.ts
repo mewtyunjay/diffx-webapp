@@ -3,10 +3,9 @@ import { Router } from "express";
 import type {
   DiffScope,
   DiffSide,
-  FileContentsQuery,
-  FileContentsResponse,
 } from "@diffx/contracts";
-import { sendApiError } from "./http.js";
+import { getLazyFileContents } from "../services/diff.service.js";
+import { sendApiError, sendRouteError } from "./http.js";
 
 const router = Router();
 
@@ -20,7 +19,7 @@ function parseSide(side: unknown): DiffSide | null {
   return null;
 }
 
-router.get("/file-contents", (req, res) => {
+router.get("/file-contents", async (req, res) => {
   const path = req.query.path;
   const scope = parseScope(req.query.scope);
   const side = parseSide(req.query.side);
@@ -47,25 +46,12 @@ router.get("/file-contents", (req, res) => {
     );
   }
 
-  const query: FileContentsQuery = { path, scope, side };
-  void query;
-
-  const body: FileContentsResponse = {
-    mode: "git",
-    side,
-    file: {
-      name: path,
-      contents:
-        side === "old"
-          ? "const value = 1;\nconsole.log(value);\n"
-          : "const value = 2;\nconsole.log(value);\n",
-    },
-    isBinary: false,
-    tooLarge: false,
-    languageHint: "ts",
-  };
-
-  return res.json(body);
+  try {
+    const body = await getLazyFileContents(path, scope, side);
+    res.json(body);
+  } catch (error) {
+    sendRouteError(res, error);
+  }
 });
 
 export default router;

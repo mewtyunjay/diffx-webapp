@@ -1,7 +1,8 @@
 // Serves lightweight diff summaries; flow is GET /api/diff(query) -> DiffSummaryResponse JSON.
 import { Router } from "express";
-import type { DiffQuery, DiffScope, DiffSummaryResponse } from "@diffx/contracts";
-import { sendApiError } from "./http.js";
+import type { DiffScope } from "@diffx/contracts";
+import { getDiffSummary } from "../services/diff.service.js";
+import { sendApiError, sendRouteError } from "./http.js";
 
 const router = Router();
 
@@ -10,7 +11,7 @@ function parseScope(scope: unknown): DiffScope | null {
   return null;
 }
 
-router.get("/diff", (req, res) => {
+router.get("/diff", async (req, res) => {
   const path = req.query.path;
   const scope = parseScope(req.query.scope);
   const contextLines = req.query.contextLines;
@@ -28,37 +29,29 @@ router.get("/diff", (req, res) => {
     );
   }
 
-  const query: DiffQuery = {
-    path,
-    scope,
-    contextLines:
-      typeof contextLines === "string" && Number.isFinite(Number(contextLines))
-        ? Number(contextLines)
-        : undefined,
-  };
-  void query;
+  const parsedContextLines =
+    typeof contextLines === "string" && contextLines.length > 0
+      ? Number(contextLines)
+      : undefined;
 
-  const body: DiffSummaryResponse = {
-    mode: "git",
-    file: {
-      path,
-      oldPath: path,
-      newPath: path,
-      languageHint: "ts",
-      isBinary: false,
-      tooLarge: false,
-      patch: [
-        `--- a/${path}`,
-        `+++ b/${path}`,
-        "@@ -1,2 +1,2 @@",
-        "-const value = 1;",
-        "+const value = 2;",
-      ].join("\n"),
-      stats: { additions: 1, deletions: 1, hunks: 1 },
-    },
-  };
+  if (
+    parsedContextLines !== undefined &&
+    (!Number.isFinite(parsedContextLines) || parsedContextLines < 0)
+  ) {
+    return sendApiError(
+      res,
+      400,
+      "INVALID_PATH",
+      "Query param `contextLines` must be a non-negative number when provided.",
+    );
+  }
 
-  return res.json(body);
+  try {
+    const body = await getDiffSummary(path, scope, parsedContextLines);
+    res.json(body);
+  } catch (error) {
+    sendRouteError(res, error);
+  }
 });
 
 export default router;
