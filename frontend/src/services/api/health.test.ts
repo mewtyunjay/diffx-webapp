@@ -17,7 +17,7 @@ describe("getHealth", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(getHealth()).resolves.toEqual({ ok: true });
-    expect(fetchMock).toHaveBeenCalledWith("/api/health");
+    expect(fetchMock).toHaveBeenCalledWith("/api/health", undefined);
   });
 
   it("throws a descriptive error when API responds with failure status", async () => {
@@ -25,6 +25,6 @@ describe("getHealth", () => {
 
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(getHealth()).rejects.toThrow("Health check failed: 503");
+    await expect(getHealth()).rejects.toThrow("Request failed: 503");
   });
 });

@@ -1,33 +1,144 @@
 import React from "react";
-import { render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
+import { getDiffSummary } from "./services/api/diff";
+import { getLazyFileContents } from "./services/api/file-contents";
+import { getChangedFiles } from "./services/api/files";
 import { getHealth } from "./services/api/health";
+import { getRepoSummary } from "./services/api/repo";
+
+vi.mock("./services/api/repo", () => ({
+  getRepoSummary: vi.fn(),
+}));
+
+vi.mock("./services/api/files", () => ({
+  getChangedFiles: vi.fn(),
+}));
+
+vi.mock("./services/api/diff", () => ({
+  getDiffSummary: vi.fn(),
+}));
+
+vi.mock("./services/api/file-contents", () => ({
+  getLazyFileContents: vi.fn(),
+}));
 
 vi.mock("./services/api/health", () => ({
   getHealth: vi.fn(),
 }));
 
 describe("App", () => {
+  const getRepoSummaryMock = vi.mocked(getRepoSummary);
+  const getChangedFilesMock = vi.mocked(getChangedFiles);
+  const getDiffSummaryMock = vi.mocked(getDiffSummary);
+  const getLazyFileContentsMock = vi.mocked(getLazyFileContents);
   const getHealthMock = vi.mocked(getHealth);
 
   beforeEach(() => {
     vi.resetAllMocks();
   });
 
-  it("shows connected status after successful health request", async () => {
-    getHealthMock.mockResolvedValue({ ok: true });
-
-    render(<App />);
-
-    expect(await screen.findByText("backend connected")).toBeInTheDocument();
+  afterEach(() => {
+    cleanup();
   });
 
-  it("shows disconnected status after failed health request", async () => {
-    getHealthMock.mockRejectedValue(new Error("network failed"));
+  function renderWithQueryClient() {
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: {
+          retry: false,
+          refetchOnWindowFocus: false,
+        },
+      },
+    });
 
-    render(<App />);
+    return render(
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>,
+    );
+  }
 
-    expect(await screen.findByText("backend disconnected")).toBeInTheDocument();
+  it("renders non-git gate when repository mode is non-git", async () => {
+    getRepoSummaryMock.mockResolvedValue({
+      mode: "non-git",
+      repoName: "scratch-folder",
+      branch: null,
+      stagedCount: 0,
+      unstagedCount: 0,
+      untrackedCount: 0,
+    });
+
+    renderWithQueryClient();
+
+    expect(await screen.findByText("Not a Git repository")).toBeInTheDocument();
+  });
+
+  it("renders app shell with topbar and tabs in git mode", async () => {
+    getRepoSummaryMock.mockResolvedValue({
+      mode: "git",
+      repoName: "diffx-webapp",
+      branch: "main",
+      stagedCount: 1,
+      unstagedCount: 2,
+      untrackedCount: 0,
+    });
+
+    getChangedFilesMock.mockResolvedValue([
+      { path: "backend/src/app.ts", status: "unstaged" },
+    ]);
+
+    getDiffSummaryMock.mockResolvedValue({
+      mode: "git",
+      file: {
+        path: "backend/src/app.ts",
+        oldPath: "backend/src/app.ts",
+        newPath: "backend/src/app.ts",
+        languageHint: "ts",
+        isBinary: false,
+        tooLarge: false,
+        patch: [
+          "diff --git a/backend/src/app.ts b/backend/src/app.ts",
+          "index 1111111..2222222 100644",
+          "--- a/backend/src/app.ts",
+          "+++ b/backend/src/app.ts",
+          "@@ -1 +1 @@",
+          "-const app = oldValue",
+          "+const app = newValue",
+          "",
+        ].join("\n"),
+        stats: {
+          additions: 1,
+          deletions: 1,
+          hunks: 1,
+        },
+      },
+    });
+
+    getHealthMock.mockResolvedValue({ ok: true });
+
+    getLazyFileContentsMock.mockImplementation(async ({ path, side }) => ({
+      mode: "git",
+      side,
+      file: {
+        name: path,
+        contents: side === "old" ? "const app = oldValue" : "const app = newValue",
+      },
+      isBinary: false,
+      tooLarge: false,
+      languageHint: "ts",
+    }));
+
+    renderWithQueryClient();
+
+    expect(await screen.findByText("diffx-webapp")).toBeInTheDocument();
+    expect(await screen.findByRole("tab", { name: "Files" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "backend/src/app.ts" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "split" })).toBeInTheDocument();
+    expect(
+      await screen.findByText("Click line-info separators to expand unchanged context."),
+    ).toBeInTheDocument();
   });
 });
