@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DiffSummaryResponse } from "@diffx/contracts";
 import { getDiffSummary } from "../../../services/api/diff";
-import { FilesTab } from "./FilesTab";
+import { FilesTab, type FilesDockMessage } from "./FilesTab";
 
 vi.mock("../../../services/api/diff", () => ({
   getDiffSummary: vi.fn(),
@@ -28,8 +28,12 @@ function renderFilesTab(options?: {
   onStageFiles?: (paths: string[]) => void;
   onUnstageFiles?: (paths: string[]) => void;
   stagedCount?: number;
+  dockAction?: "commit" | "push" | "create-upstream";
+  dockMessage?: FilesDockMessage;
   isCommitting?: boolean;
+  isPushing?: boolean;
   onCommitChanges?: (message: string) => void;
+  onPushChanges?: (createUpstream: boolean) => void;
 }) {
   const onSelectFile = vi.fn();
   const onStageFile = options?.onStageFile ?? vi.fn();
@@ -37,6 +41,7 @@ function renderFilesTab(options?: {
   const onStageFiles = options?.onStageFiles ?? vi.fn();
   const onUnstageFiles = options?.onUnstageFiles ?? vi.fn();
   const onCommitChanges = options?.onCommitChanges ?? vi.fn();
+  const onPushChanges = options?.onPushChanges ?? vi.fn();
 
   render(
     <QueryClientProvider client={buildQueryClient()}>
@@ -54,8 +59,12 @@ function renderFilesTab(options?: {
         onUnstageFiles={onUnstageFiles}
         pendingMutationsByPath={options?.pendingMutationsByPath ?? new Map()}
         stagedCount={options?.stagedCount ?? 1}
+        dockAction={options?.dockAction ?? "commit"}
+        dockMessage={options?.dockMessage ?? null}
         isCommitting={options?.isCommitting ?? false}
+        isPushing={options?.isPushing ?? false}
         onCommitChanges={onCommitChanges}
+        onPushChanges={onPushChanges}
       />
     </QueryClientProvider>,
   );
@@ -67,6 +76,7 @@ function renderFilesTab(options?: {
     onStageFiles,
     onUnstageFiles,
     onCommitChanges,
+    onPushChanges,
   };
 }
 
@@ -173,5 +183,32 @@ describe("FilesTab row actions", () => {
     fireEvent.click(screen.getByRole("button", { name: "commit" }));
 
     expect(onCommitChanges).toHaveBeenCalledWith("tidy files tab flow");
+  });
+
+  it("switches dock action to push and triggers push callback", () => {
+    const onPushChanges = vi.fn();
+
+    renderFilesTab({ dockAction: "push", onPushChanges, stagedCount: 0 });
+
+    expect(screen.queryByPlaceholderText("describe why this change exists")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "push" }));
+    expect(onPushChanges).toHaveBeenCalledWith(false);
+  });
+
+  it("shows create-upstream push action when upstream is missing", () => {
+    const onPushChanges = vi.fn();
+
+    renderFilesTab({
+      dockAction: "create-upstream",
+      stagedCount: 0,
+      onPushChanges,
+      dockMessage: { tone: "info", text: "No upstream exists for 'main'. Should I create one with the same name?" },
+    });
+
+    expect(screen.getByText("No upstream exists for 'main'. Should I create one with the same name?")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "create upstream + push" }));
+    expect(onPushChanges).toHaveBeenCalledWith(true);
   });
 });

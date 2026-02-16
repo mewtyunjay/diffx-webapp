@@ -436,6 +436,14 @@
   min-width: 9rem;
 }
 
+.files-commit-status {
+  align-self: center;
+}
+
+.files-commit-feedback {
+  margin-top: -0.2rem;
+}
+
 .file-group {
   display: flex;
   flex-direction: column;

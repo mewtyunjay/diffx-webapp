@@ -4,7 +4,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ActionResponse } from "@diffx/contracts";
 import App from "./App";
-import { commitChanges, stageFile, stageManyFiles, unstageFile } from "./services/api/actions";
+import { commitChanges, pushChanges, stageFile, stageManyFiles, unstageFile } from "./services/api/actions";
+import { ApiRequestError } from "./services/api/client";
 import { getDiffDetail, getDiffSummary } from "./services/api/diff";
 import { getChangedFiles } from "./services/api/files";
 import { getHealth } from "./services/api/health";
@@ -32,6 +33,7 @@ vi.mock("./services/api/actions", () => ({
   stageManyFiles: vi.fn(),
   unstageFile: vi.fn(),
   commitChanges: vi.fn(),
+  pushChanges: vi.fn(),
 }));
 
 function createDeferred<T>() {
@@ -56,6 +58,7 @@ describe("App", () => {
   const stageManyFilesMock = vi.mocked(stageManyFiles);
   const unstageFileMock = vi.mocked(unstageFile);
   const commitChangesMock = vi.mocked(commitChanges);
+  const pushChangesMock = vi.mocked(pushChanges);
 
   function buildGitRepoSummary(overrides: Partial<Awaited<ReturnType<typeof getRepoSummary>>> = {}) {
     return {
@@ -88,6 +91,7 @@ describe("App", () => {
     stageManyFilesMock.mockResolvedValue({ ok: true, message: "Staged files" });
     unstageFileMock.mockResolvedValue({ ok: true, message: "Unstaged file" });
     commitChangesMock.mockResolvedValue({ ok: true, message: "Committed" });
+    pushChangesMock.mockResolvedValue({ ok: true, message: "Pushed" });
 
     getDiffDetailMock.mockResolvedValue({
       mode: "git",
@@ -383,7 +387,7 @@ describe("App", () => {
     expect(stageFileMock).not.toHaveBeenCalled();
   });
 
-  it("submits commit from files tab dock", async () => {
+  it("switches files dock action from commit to push after commit", async () => {
     getRepoSummaryMock.mockResolvedValue(
       buildGitRepoSummary({ stagedCount: 1 }),
     );
@@ -434,6 +438,85 @@ describe("App", () => {
 
     await waitFor(() => {
       expect(commitChangesMock).toHaveBeenCalledWith({ message: "ship files dock" });
+    });
+
+    const pushButton = await screen.findByRole("button", { name: "push" });
+    fireEvent.click(pushButton);
+
+    await waitFor(() => {
+      expect(pushChangesMock).toHaveBeenCalledWith({});
+    });
+  });
+
+  it("offers create-upstream push action when push reports missing upstream", async () => {
+    getRepoSummaryMock.mockResolvedValue(
+      buildGitRepoSummary({ stagedCount: 1 }),
+    );
+
+    getChangedFilesMock.mockResolvedValue([
+      { path: "frontend/src/App.tsx", status: "staged", contentHash: "hash-frontend-app" },
+    ]);
+
+    getDiffSummaryMock.mockResolvedValue({
+      mode: "git",
+      file: {
+        path: "frontend/src/App.tsx",
+        oldPath: "frontend/src/App.tsx",
+        newPath: "frontend/src/App.tsx",
+        languageHint: "tsx",
+        isBinary: false,
+        tooLarge: false,
+        patch: "",
+        stats: { additions: 0, deletions: 0, hunks: 0 },
+      },
+    });
+
+    getDiffDetailMock.mockResolvedValue({
+      mode: "git",
+      file: {
+        path: "frontend/src/App.tsx",
+        oldPath: "frontend/src/App.tsx",
+        newPath: "frontend/src/App.tsx",
+        languageHint: "tsx",
+        isBinary: false,
+        tooLarge: false,
+        patch: "",
+        stats: { additions: 0, deletions: 0, hunks: 0 },
+      },
+      old: { file: { name: "frontend/src/App.tsx", contents: "" }, isBinary: false, tooLarge: false, error: false },
+      new: { file: { name: "frontend/src/App.tsx", contents: "" }, isBinary: false, tooLarge: false, error: false },
+    });
+
+    getHealthMock.mockResolvedValue({ ok: true });
+
+    pushChangesMock.mockRejectedValueOnce(
+      new ApiRequestError(
+        409,
+        "NO_UPSTREAM",
+        "No upstream exists for 'main'. Should I create one with the same name?",
+      ),
+    );
+
+    renderWithQueryClient();
+
+    const messageBox = await screen.findByPlaceholderText("describe why this change exists");
+    fireEvent.change(messageBox, { target: { value: "ship files dock" } });
+    fireEvent.click(screen.getByRole("button", { name: "commit" }));
+
+    const pushButton = await screen.findByRole("button", { name: "push" });
+    fireEvent.click(pushButton);
+
+    await waitFor(() => {
+      expect(pushChangesMock).toHaveBeenCalledWith({});
+    });
+
+    expect(await screen.findByText("No upstream exists for 'main'. Should I create one with the same name?")).toBeInTheDocument();
+
+    const createUpstreamButton = screen.getByRole("button", { name: "create upstream + push" });
+    fireEvent.click(createUpstreamButton);
+
+    await waitFor(() => {
+      expect(pushChangesMock).toHaveBeenLastCalledWith({ createUpstream: true });
     });
   });
 });

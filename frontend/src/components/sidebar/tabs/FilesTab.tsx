@@ -5,6 +5,13 @@ import { getDiffSummary } from "../../../services/api/diff";
 import { queryKeys } from "../../../services/query-keys";
 import { DiffStatBadge } from "./DiffStatBadge";
 
+export type FilesDockAction = "commit" | "push" | "create-upstream";
+
+export type FilesDockMessage = {
+  tone: "info" | "error";
+  text: string;
+} | null;
+
 type FilesTabProps = {
   files: ChangedFile[];
   selectedFile: ChangedFile | null;
@@ -15,8 +22,12 @@ type FilesTabProps = {
   onUnstageFiles: (paths: string[]) => void;
   pendingMutationsByPath: ReadonlyMap<string, "stage" | "unstage">;
   stagedCount: number;
+  dockAction: FilesDockAction;
+  dockMessage: FilesDockMessage;
   isCommitting: boolean;
+  isPushing: boolean;
   onCommitChanges: (message: string) => void;
+  onPushChanges: (createUpstream: boolean) => void;
 };
 
 const STATUS_ORDER: ChangedFileStatus[] = ["staged", "unstaged", "untracked"];
@@ -122,8 +133,12 @@ export function FilesTab({
   onUnstageFiles,
   pendingMutationsByPath,
   stagedCount,
+  dockAction,
+  dockMessage,
   isCommitting,
+  isPushing,
   onCommitChanges,
+  onPushChanges,
 }: FilesTabProps) {
   const [commitMessage, setCommitMessage] = useState("");
 
@@ -170,7 +185,31 @@ export function FilesTab({
   const displayPathByFile = useMemo(() => buildDisplayPathMap(files), [files]);
 
   const trimmedCommitMessage = commitMessage.trim();
-  const canCommit = trimmedCommitMessage.length > 0 && stagedCount > 0 && !isCommitting;
+  const isCommitAction = dockAction === "commit";
+  const canCommit = trimmedCommitMessage.length > 0 && stagedCount > 0 && !isCommitting && !isPushing;
+  const canPush = !isCommitting && !isPushing;
+  const actionDisabled = isCommitAction ? !canCommit : !canPush;
+
+  const actionLabel = isCommitting
+    ? "committing..."
+    : isPushing
+      ? dockAction === "create-upstream"
+        ? "creating upstream..."
+        : "pushing..."
+      : dockAction === "create-upstream"
+        ? "create upstream + push"
+        : dockAction;
+
+  const dockInfo =
+    dockAction === "commit"
+      ? null
+      : dockMessage?.tone === "info"
+        ? dockMessage.text
+        : dockAction === "create-upstream"
+          ? "No upstream branch is configured for this branch."
+          : "Commit created. Push to publish changes.";
+
+  const dockError = dockMessage?.tone === "error" ? dockMessage.text : null;
 
   return (
     <div className="files-tab">
@@ -264,29 +303,40 @@ export function FilesTab({
       </div>
 
       <div className="files-commit-dock">
-        <p className="hud-label">commit message</p>
+        <p className="hud-label">{isCommitAction ? "commit message" : "publish"}</p>
 
         <div className="files-commit-entry">
-          <textarea
-            className="files-commit-input"
-            rows={2}
-            value={commitMessage}
-            onChange={(event) => setCommitMessage(event.target.value)}
-            placeholder="describe why this change exists"
-          />
+          {isCommitAction ? (
+            <textarea
+              className="files-commit-input"
+              rows={2}
+              value={commitMessage}
+              onChange={(event) => setCommitMessage(event.target.value)}
+              placeholder="describe why this change exists"
+            />
+          ) : (
+            <p className="inline-note files-commit-status">{dockInfo}</p>
+          )}
 
           <button
             className="hud-button"
             type="button"
-            disabled={!canCommit}
+            disabled={actionDisabled}
             onClick={() => {
-              onCommitChanges(trimmedCommitMessage);
-              setCommitMessage("");
+              if (isCommitAction) {
+                onCommitChanges(trimmedCommitMessage);
+                setCommitMessage("");
+                return;
+              }
+
+              onPushChanges(dockAction === "create-upstream");
             }}
           >
-            {isCommitting ? "committing..." : "commit"}
+            {actionLabel}
           </button>
         </div>
+
+        {dockError ? <p className="error-note files-commit-feedback">{dockError}</p> : null}
       </div>
     </div>
   );

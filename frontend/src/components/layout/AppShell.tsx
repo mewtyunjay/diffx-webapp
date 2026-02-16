@@ -9,7 +9,8 @@ import type {
   RepoSummary,
 } from "@diffx/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { commitChanges, stageFile, stageManyFiles, unstageFile } from "../../services/api/actions";
+import { commitChanges, pushChanges, stageFile, stageManyFiles, unstageFile } from "../../services/api/actions";
+import { ApiRequestError } from "../../services/api/client";
 import { getDiffDetail } from "../../services/api/diff";
 import { toUiError } from "../../services/api/error-ui";
 import { getChangedFiles } from "../../services/api/files";
@@ -28,6 +29,11 @@ type AppShellProps = {
 };
 
 type PendingFileMutation = "stage" | "unstage";
+type FilesDockMode = "idle" | "push" | "create-upstream";
+type FilesDockMessage = {
+  tone: "info" | "error";
+  text: string;
+} | null;
 
 const STATUS_PRIORITY: Record<ChangedFileStatus, number> = {
   staged: 0,
@@ -181,6 +187,8 @@ export function AppShell({ initialRepo }: AppShellProps) {
   const [activeTab, setActiveTab] = useState<SidebarTabId>("files");
   const [selectedFile, setSelectedFile] = useState<ChangedFile | null>(null);
   const [viewMode, setViewMode] = useState<DiffViewMode>("split");
+  const [filesDockMode, setFilesDockMode] = useState<FilesDockMode>("idle");
+  const [filesDockMessage, setFilesDockMessage] = useState<FilesDockMessage>(null);
   const [pendingMutationsByPath, setPendingMutationsByPath] = useState<Map<string, PendingFileMutation>>(
     () => new Map(),
   );
@@ -231,6 +239,18 @@ export function AppShell({ initialRepo }: AppShellProps) {
   function endPendingMutation(path: string) {
     endPendingMutations([path]);
   }
+
+  function resetFilesDockState() {
+    setFilesDockMode("idle");
+    setFilesDockMessage(null);
+  }
+
+  const filesDockAction =
+    filesDockMode === "create-upstream"
+      ? "create-upstream"
+      : filesDockMode === "push"
+        ? "push"
+        : "commit";
 
   const repoQuery = useQuery({
     queryKey: queryKeys.repo,
@@ -562,12 +582,51 @@ export function AppShell({ initialRepo }: AppShellProps) {
 
   const commitMutation = useMutation({
     mutationFn: async (message: string) => await commitChanges({ message }),
+    onMutate: () => {
+      setFilesDockMessage(null);
+    },
     onSuccess: async () => {
+      setFilesDockMode("push");
+      setFilesDockMessage(null);
       await refreshQueries();
+    },
+    onError: (error) => {
+      setFilesDockMode("idle");
+      setFilesDockMessage({
+        tone: "error",
+        text: toUiError(error, "Unable to create commit.").message,
+      });
+    },
+  });
+
+  const pushMutation = useMutation({
+    mutationFn: async (createUpstream: boolean) =>
+      await pushChanges(createUpstream ? { createUpstream: true } : {}),
+    onMutate: () => {
+      setFilesDockMessage(null);
+    },
+    onSuccess: async () => {
+      resetFilesDockState();
+      await refreshQueries();
+    },
+    onError: (error, createUpstream) => {
+      if (error instanceof ApiRequestError && error.code === "NO_UPSTREAM" && !createUpstream) {
+        setFilesDockMode("create-upstream");
+        setFilesDockMessage({ tone: "info", text: error.message });
+        return;
+      }
+
+      setFilesDockMode(createUpstream ? "create-upstream" : "push");
+      setFilesDockMessage({
+        tone: "error",
+        text: toUiError(error, "Unable to push changes.").message,
+      });
     },
   });
 
   function requestStage(path: string) {
+    resetFilesDockState();
+
     if (!beginPendingMutation(path, "stage")) {
       return;
     }
@@ -576,6 +635,8 @@ export function AppShell({ initialRepo }: AppShellProps) {
   }
 
   function requestUnstage(path: string) {
+    resetFilesDockState();
+
     if (!beginPendingMutation(path, "unstage")) {
       return;
     }
@@ -584,6 +645,8 @@ export function AppShell({ initialRepo }: AppShellProps) {
   }
 
   function requestStageMany(paths: string[]) {
+    resetFilesDockState();
+
     const acceptedPaths = beginPendingMutations(paths, "stage");
     if (acceptedPaths.length === 0) {
       return;
@@ -593,11 +656,27 @@ export function AppShell({ initialRepo }: AppShellProps) {
   }
 
   function requestUnstageMany(paths: string[]) {
+    resetFilesDockState();
+
     const uniquePaths = [...new Set(paths)];
 
     for (const path of uniquePaths) {
       requestUnstage(path);
     }
+  }
+
+  function requestCommit(message: string) {
+    setFilesDockMessage(null);
+    commitMutation.mutate(message);
+  }
+
+  function requestPush(createUpstream: boolean) {
+    if (commitMutation.isPending || pushMutation.isPending) {
+      return;
+    }
+
+    setFilesDockMessage(null);
+    pushMutation.mutate(createUpstream);
   }
 
   if (repo.mode === "non-git") {
@@ -636,13 +715,17 @@ export function AppShell({ initialRepo }: AppShellProps) {
           filesError={filesQuery.isError ? toUiError(filesQuery.error).message : null}
           pendingMutationsByPath={pendingMutationsByPath}
           stagedCount={repo.stagedCount}
+          filesDockAction={filesDockAction}
+          filesDockMessage={filesDockMessage}
           isCommitting={commitMutation.isPending}
+          isPushing={pushMutation.isPending}
           onSelectFile={setSelectedFile}
           onStageFile={requestStage}
           onUnstageFile={requestUnstage}
           onStageFiles={requestStageMany}
           onUnstageFiles={requestUnstageMany}
-          onCommitChanges={(message) => commitMutation.mutate(message)}
+          onCommitChanges={requestCommit}
+          onPushChanges={requestPush}
         />
       </main>
 

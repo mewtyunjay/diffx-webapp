@@ -1,6 +1,6 @@
 import type { ChangedFile } from "@diffx/contracts";
 import { tabRegistry, type SidebarTabId } from "./tabRegistry";
-import { FilesTab } from "./tabs/FilesTab";
+import { FilesTab, type FilesDockAction, type FilesDockMessage } from "./tabs/FilesTab";
 import { ActionsTab } from "./tabs/ActionsTab";
 
 type SidebarShellProps = {
@@ -12,13 +12,17 @@ type SidebarShellProps = {
   filesError: string | null;
   pendingMutationsByPath: ReadonlyMap<string, "stage" | "unstage">;
   stagedCount: number;
+  filesDockAction: FilesDockAction;
+  filesDockMessage: FilesDockMessage;
   isCommitting: boolean;
+  isPushing: boolean;
   onSelectFile: (file: ChangedFile) => void;
   onStageFile: (path: string) => void;
   onUnstageFile: (path: string) => void;
   onStageFiles: (paths: string[]) => void;
   onUnstageFiles: (paths: string[]) => void;
   onCommitChanges: (message: string) => void;
+  onPushChanges: (createUpstream: boolean) => void;
 };
 
 export function SidebarShell({
@@ -30,13 +34,17 @@ export function SidebarShell({
   filesError,
   pendingMutationsByPath,
   stagedCount,
+  filesDockAction,
+  filesDockMessage,
   isCommitting,
+  isPushing,
   onSelectFile,
   onStageFile,
   onUnstageFile,
   onStageFiles,
   onUnstageFiles,
   onCommitChanges,
+  onPushChanges,
 }: SidebarShellProps) {
   return (
     <aside className="sidebar-shell">
@@ -71,8 +79,12 @@ export function SidebarShell({
                 onUnstageFiles={onUnstageFiles}
                 pendingMutationsByPath={pendingMutationsByPath}
                 stagedCount={stagedCount}
+                dockAction={filesDockAction}
+                dockMessage={filesDockMessage}
                 isCommitting={isCommitting}
+                isPushing={isPushing}
                 onCommitChanges={onCommitChanges}
+                onPushChanges={onPushChanges}
               />
             ) : null}
           </>
