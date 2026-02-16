@@ -1,14 +1,9 @@
 import React from "react";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
-import { QueryClient, QueryClientProvider, type UseQueryResult } from "@tanstack/react-query";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ChangedFile, DiffSummaryResponse, FileContentsResponse } from "@diffx/contracts";
-import { getLazyFileContents } from "../../services/api/file-contents";
+import { cleanup, render, screen } from "@testing-library/react";
+import type { UseQueryResult } from "@tanstack/react-query";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ChangedFile, DiffDetailResponse } from "@diffx/contracts";
 import { DiffPanel } from "./DiffPanel";
-
-vi.mock("../../services/api/file-contents", () => ({
-  getLazyFileContents: vi.fn(),
-}));
 
 vi.mock("./PierreDiffRenderer", () => ({
   PierreDiffRenderer: ({ mode }: { mode: "patch" | "full" }) => (
@@ -16,51 +11,22 @@ vi.mock("./PierreDiffRenderer", () => ({
   ),
 }));
 
-function createQueryClient() {
-  return new QueryClient({
-    defaultOptions: {
-      queries: {
-        retry: false,
-        refetchOnWindowFocus: false,
-      },
-    },
-  });
-}
-
-function buildDiffQuery(data: DiffSummaryResponse): UseQueryResult<DiffSummaryResponse, Error> {
+function buildDiffQuery(data: DiffDetailResponse): UseQueryResult<DiffDetailResponse, Error> {
   return {
     data,
     isPending: false,
     isError: false,
     error: null,
-  } as UseQueryResult<DiffSummaryResponse, Error>;
+  } as UseQueryResult<DiffDetailResponse, Error>;
 }
 
-function createDeferred<T>() {
-  let resolve!: (value: T | PromiseLike<T>) => void;
-  let reject!: (reason?: unknown) => void;
-
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-
-  return { promise, resolve, reject };
-}
-
-describe("DiffPanel full context loading", () => {
-  const getLazyFileContentsMock = vi.mocked(getLazyFileContents);
-
-  beforeEach(() => {
-    vi.resetAllMocks();
-  });
-
+describe("DiffPanel rendering", () => {
   afterEach(() => {
     cleanup();
   });
 
-  it("loads full context automatically and renders full diff once available", async () => {
-    const selectedFile: ChangedFile = { path: "backend/src/app.ts", status: "unstaged" };
+  it("renders full diff directly when detail payload includes full context", () => {
+    const selectedFile: ChangedFile = { path: "backend/src/app.ts", status: "unstaged", contentHash: "hash-app" };
 
     const diffQuery = buildDiffQuery({
       mode: "git",
@@ -83,69 +49,41 @@ describe("DiffPanel full context loading", () => {
         ].join("\n"),
         stats: { additions: 1, deletions: 1, hunks: 1 },
       },
-    });
-
-    const oldDeferred = createDeferred<FileContentsResponse>();
-    const newDeferred = createDeferred<FileContentsResponse>();
-
-    getLazyFileContentsMock.mockImplementation(({ side }) => {
-      if (side === "old") {
-        return oldDeferred.promise;
-      }
-
-      return newDeferred.promise;
+      old: {
+        file: {
+          name: "backend/src/app.ts",
+          contents: "old",
+        },
+        isBinary: false,
+        tooLarge: false,
+        error: false,
+      },
+      new: {
+        file: {
+          name: "backend/src/app.ts",
+          contents: "new",
+        },
+        isBinary: false,
+        tooLarge: false,
+        error: false,
+      },
     });
 
     render(
-      <QueryClientProvider client={createQueryClient()}>
-        <DiffPanel
-          selectedFile={selectedFile}
-          scope="unstaged"
-          fileChangeCountLabel="1/1"
-          viewMode="split"
-          onViewModeChange={() => undefined}
-          onPreviousFile={() => undefined}
-          onNextFile={() => undefined}
-          canGoPrevious={false}
-          canGoNext={false}
-          diffQuery={diffQuery}
-        />
-      </QueryClientProvider>,
+      <DiffPanel
+        selectedFile={selectedFile}
+        fileChangeCountLabel="1/1"
+        viewMode="split"
+        onViewModeChange={() => undefined}
+        onPreviousFile={() => undefined}
+        onNextFile={() => undefined}
+        canGoPrevious={false}
+        canGoNext={false}
+        diffQuery={diffQuery}
+      />,
     );
 
-    expect(screen.getByText("Loading full diff...")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "load full context" })).not.toBeInTheDocument();
-
-    await waitFor(() => {
-      expect(getLazyFileContentsMock).toHaveBeenCalledTimes(2);
-    });
-
-    oldDeferred.resolve({
-      mode: "git",
-      side: "old",
-      file: {
-        name: "backend/src/app.ts",
-        contents: "old",
-      },
-      isBinary: false,
-      tooLarge: false,
-      languageHint: "ts",
-    });
-
-    newDeferred.resolve({
-      mode: "git",
-      side: "new",
-      file: {
-        name: "backend/src/app.ts",
-        contents: "new",
-      },
-      isBinary: false,
-      tooLarge: false,
-      languageHint: "ts",
-    });
-
-    await waitFor(() => {
-      expect(screen.getByTestId("render-full")).toBeInTheDocument();
-    });
+    expect(screen.getByTestId("render-full")).toBeInTheDocument();
+    expect(screen.queryByText("Loading full diff...")).not.toBeInTheDocument();
   });
 });

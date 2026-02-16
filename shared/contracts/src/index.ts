@@ -10,6 +10,7 @@ export type RepoSummary = {
   stagedCount: number;
   unstagedCount: number;
   untrackedCount: number;
+  remoteHash: string;
 };
 
 export type ChangedFileStatus = "staged" | "unstaged" | "untracked";
@@ -17,6 +18,7 @@ export type ChangedFileStatus = "staged" | "unstaged" | "untracked";
 export type ChangedFile = {
   path: string;
   status: ChangedFileStatus;
+  contentHash: string;
 };
 
 export type BranchSummary = {
@@ -36,6 +38,8 @@ export type DiffQuery = {
   scope: DiffScope;
   contextLines?: number;
 };
+
+export type DiffDetailQuery = DiffQuery;
 
 export type DiffStats = {
   additions: number;
@@ -77,6 +81,20 @@ export type FileContentsResponse = {
   isBinary: boolean;
   tooLarge: boolean;
   languageHint: string | null;
+};
+
+export type DiffDetailSide = {
+  file: FileContents | null;
+  isBinary: boolean;
+  tooLarge: boolean;
+  error: boolean;
+};
+
+export type DiffDetailResponse = {
+  mode: RepoMode;
+  file: FileDiff | null;
+  old: DiffDetailSide;
+  new: DiffDetailSide;
 };
 
 export type ApiErrorCode =

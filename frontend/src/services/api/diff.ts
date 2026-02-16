@@ -1,4 +1,4 @@
-import type { DiffQuery, DiffSummaryResponse } from "@diffx/contracts";
+import type { DiffDetailQuery, DiffDetailResponse, DiffQuery, DiffSummaryResponse } from "@diffx/contracts";
 import { fetchJson } from "./client";
 
 type RequestOptions = {
@@ -23,4 +23,12 @@ export async function getDiffSummary(
 ): Promise<DiffSummaryResponse> {
   const qs = toDiffQueryString(query);
   return await fetchJson<DiffSummaryResponse>(`/api/diff?${qs}`, { signal: options?.signal });
+}
+
+export async function getDiffDetail(
+  query: DiffDetailQuery,
+  options?: RequestOptions,
+): Promise<DiffDetailResponse> {
+  const qs = toDiffQueryString(query);
+  return await fetchJson<DiffDetailResponse>(`/api/diff-detail?${qs}`, { signal: options?.signal });
 }

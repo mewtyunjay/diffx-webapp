@@ -1,4 +1,4 @@
-import type { ChangedFile, ChangedFileStatus } from "@diffx/contracts";
+import type { ChangedFileStatus } from "@diffx/contracts";
 import { execGit, toGitApiError } from "./git-client.js";
 
 export type GitStatusEntry = {
@@ -6,6 +6,11 @@ export type GitStatusEntry = {
   staged: boolean;
   unstaged: boolean;
   untracked: boolean;
+};
+
+export type ChangedFileIdentity = {
+  path: string;
+  status: ChangedFileStatus;
 };
 
 const STATUS_PRIORITY: Record<ChangedFileStatus, number> = {
@@ -94,8 +99,8 @@ export function getStatusEntryMap(entries: GitStatusEntry[]): Map<string, GitSta
   return new Map(entries.map((entry) => [entry.path, entry]));
 }
 
-export function toChangedFiles(entries: GitStatusEntry[]): ChangedFile[] {
-  const changedFiles: ChangedFile[] = [];
+export function toChangedFiles(entries: GitStatusEntry[]): ChangedFileIdentity[] {
+  const changedFiles: ChangedFileIdentity[] = [];
 
   for (const entry of entries) {
     if (entry.staged) {

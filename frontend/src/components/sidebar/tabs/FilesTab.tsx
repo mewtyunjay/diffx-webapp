@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { ChangedFile, ChangedFileStatus, DiffScope } from "@diffx/contracts";
+import type { ChangedFile, ChangedFileStatus, DiffScope, DiffSummaryResponse } from "@diffx/contracts";
 import { useQueries } from "@tanstack/react-query";
 import { getDiffSummary } from "../../../services/api/diff";
 import { queryKeys } from "../../../services/query-keys";
@@ -130,17 +130,21 @@ export function FilesTab({
   const diffQueries = useQueries({
     queries: files.map((file) => {
       const scope = toDiffScope(file.status);
-        return {
-          queryKey: queryKeys.diff(file.path, scope, 3),
-          queryFn: async ({ signal }) =>
-            await getDiffSummary({
+      return {
+        queryKey: queryKeys.diff(file.path, scope, 3, file.contentHash),
+        queryFn: async ({ signal }) =>
+          await getDiffSummary(
+            {
               path: file.path,
               scope,
               contextLines: 3,
-            }, { signal }),
-          staleTime: 15000,
-        };
-      }),
+            },
+            { signal },
+          ),
+        staleTime: 15000,
+        placeholderData: (previousData: DiffSummaryResponse | undefined) => previousData,
+      };
+    }),
   });
 
   const statsByFile = useMemo(() => {

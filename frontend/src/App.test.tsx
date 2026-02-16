@@ -5,8 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ActionResponse } from "@diffx/contracts";
 import App from "./App";
 import { commitChanges, stageFile, stageManyFiles, unstageFile } from "./services/api/actions";
-import { getDiffSummary } from "./services/api/diff";
-import { getLazyFileContents } from "./services/api/file-contents";
+import { getDiffDetail, getDiffSummary } from "./services/api/diff";
 import { getChangedFiles } from "./services/api/files";
 import { getHealth } from "./services/api/health";
 import { getRepoSummary } from "./services/api/repo";
@@ -21,10 +20,7 @@ vi.mock("./services/api/files", () => ({
 
 vi.mock("./services/api/diff", () => ({
   getDiffSummary: vi.fn(),
-}));
-
-vi.mock("./services/api/file-contents", () => ({
-  getLazyFileContents: vi.fn(),
+  getDiffDetail: vi.fn(),
 }));
 
 vi.mock("./services/api/health", () => ({
@@ -54,12 +50,37 @@ describe("App", () => {
   const getRepoSummaryMock = vi.mocked(getRepoSummary);
   const getChangedFilesMock = vi.mocked(getChangedFiles);
   const getDiffSummaryMock = vi.mocked(getDiffSummary);
-  const getLazyFileContentsMock = vi.mocked(getLazyFileContents);
+  const getDiffDetailMock = vi.mocked(getDiffDetail);
   const getHealthMock = vi.mocked(getHealth);
   const stageFileMock = vi.mocked(stageFile);
   const stageManyFilesMock = vi.mocked(stageManyFiles);
   const unstageFileMock = vi.mocked(unstageFile);
   const commitChangesMock = vi.mocked(commitChanges);
+
+  function buildGitRepoSummary(overrides: Partial<Awaited<ReturnType<typeof getRepoSummary>>> = {}) {
+    return {
+      mode: "git" as const,
+      repoName: "diffx-webapp",
+      branch: "main",
+      stagedCount: 0,
+      unstagedCount: 0,
+      untrackedCount: 0,
+      remoteHash: "remote-hash",
+      ...overrides,
+    };
+  }
+
+  function buildNonGitRepoSummary() {
+    return {
+      mode: "non-git" as const,
+      repoName: "scratch-folder",
+      branch: null,
+      stagedCount: 0,
+      unstagedCount: 0,
+      untrackedCount: 0,
+      remoteHash: "non-git",
+    };
+  }
 
   beforeEach(() => {
     vi.resetAllMocks();
@@ -67,6 +88,51 @@ describe("App", () => {
     stageManyFilesMock.mockResolvedValue({ ok: true, message: "Staged files" });
     unstageFileMock.mockResolvedValue({ ok: true, message: "Unstaged file" });
     commitChangesMock.mockResolvedValue({ ok: true, message: "Committed" });
+
+    getDiffDetailMock.mockResolvedValue({
+      mode: "git",
+      file: {
+        path: "backend/src/app.ts",
+        oldPath: "backend/src/app.ts",
+        newPath: "backend/src/app.ts",
+        languageHint: "ts",
+        isBinary: false,
+        tooLarge: false,
+        patch: [
+          "diff --git a/backend/src/app.ts b/backend/src/app.ts",
+          "index 1111111..2222222 100644",
+          "--- a/backend/src/app.ts",
+          "+++ b/backend/src/app.ts",
+          "@@ -1 +1 @@",
+          "-const app = oldValue",
+          "+const app = newValue",
+          "",
+        ].join("\n"),
+        stats: {
+          additions: 1,
+          deletions: 1,
+          hunks: 1,
+        },
+      },
+      old: {
+        file: {
+          name: "backend/src/app.ts",
+          contents: "const app = oldValue",
+        },
+        isBinary: false,
+        tooLarge: false,
+        error: false,
+      },
+      new: {
+        file: {
+          name: "backend/src/app.ts",
+          contents: "const app = newValue",
+        },
+        isBinary: false,
+        tooLarge: false,
+        error: false,
+      },
+    });
   });
 
   afterEach(() => {
@@ -91,14 +157,7 @@ describe("App", () => {
   }
 
   it("renders non-git gate when repository mode is non-git", async () => {
-    getRepoSummaryMock.mockResolvedValue({
-      mode: "non-git",
-      repoName: "scratch-folder",
-      branch: null,
-      stagedCount: 0,
-      unstagedCount: 0,
-      untrackedCount: 0,
-    });
+    getRepoSummaryMock.mockResolvedValue(buildNonGitRepoSummary());
 
     renderWithQueryClient();
 
@@ -106,17 +165,12 @@ describe("App", () => {
   });
 
   it("renders app shell with topbar and tabs in git mode", async () => {
-    getRepoSummaryMock.mockResolvedValue({
-      mode: "git",
-      repoName: "diffx-webapp",
-      branch: "main",
-      stagedCount: 1,
-      unstagedCount: 2,
-      untrackedCount: 0,
-    });
+    getRepoSummaryMock.mockResolvedValue(
+      buildGitRepoSummary({ stagedCount: 1, unstagedCount: 2 }),
+    );
 
     getChangedFilesMock.mockResolvedValue([
-      { path: "backend/src/app.ts", status: "unstaged" },
+      { path: "backend/src/app.ts", status: "unstaged", contentHash: "hash-app" },
     ]);
 
     getDiffSummaryMock.mockResolvedValue({
@@ -148,18 +202,6 @@ describe("App", () => {
 
     getHealthMock.mockResolvedValue({ ok: true });
 
-    getLazyFileContentsMock.mockImplementation(async ({ path, side }) => ({
-      mode: "git",
-      side,
-      file: {
-        name: path,
-        contents: side === "old" ? "const app = oldValue" : "const app = newValue",
-      },
-      isBinary: false,
-      tooLarge: false,
-      languageHint: "ts",
-    }));
-
     renderWithQueryClient();
 
     expect(await screen.findByText("diffx-webapp")).toBeInTheDocument();
@@ -169,18 +211,17 @@ describe("App", () => {
   });
 
   it("optimistically flips unstaged file to staged in files tab", async () => {
-    getRepoSummaryMock.mockResolvedValue({
-      mode: "git",
-      repoName: "diffx-webapp",
-      branch: "main",
-      stagedCount: 0,
-      unstagedCount: 1,
-      untrackedCount: 0,
-    });
+    getRepoSummaryMock
+      .mockResolvedValueOnce(buildGitRepoSummary({ unstagedCount: 1 }))
+      .mockResolvedValueOnce(buildGitRepoSummary({ stagedCount: 1 }))
+      .mockResolvedValue(buildGitRepoSummary({ stagedCount: 1 }));
+
+    const deferredFilesAfterRefresh = createDeferred<Awaited<ReturnType<typeof getChangedFiles>>>();
 
     getChangedFilesMock
-      .mockResolvedValueOnce([{ path: "backend/src/app.ts", status: "unstaged" }])
-      .mockResolvedValue([{ path: "backend/src/app.ts", status: "staged" }]);
+      .mockResolvedValueOnce([{ path: "backend/src/app.ts", status: "unstaged", contentHash: "hash-app" }])
+      .mockImplementationOnce(async () => await deferredFilesAfterRefresh.promise)
+      .mockResolvedValue([{ path: "backend/src/app.ts", status: "staged", contentHash: "hash-app" }]);
 
     getDiffSummaryMock.mockResolvedValue({
       mode: "git",
@@ -211,24 +252,19 @@ describe("App", () => {
 
     getHealthMock.mockResolvedValue({ ok: true });
 
-    getLazyFileContentsMock.mockImplementation(async ({ path, side }) => ({
-      mode: "git",
-      side,
-      file: {
-        name: path,
-        contents: side === "old" ? "const app = oldValue" : "const app = newValue",
-      },
-      isBinary: false,
-      tooLarge: false,
-      languageHint: "ts",
-    }));
-
     const deferred = createDeferred<ActionResponse>();
+    const deferredDiffDetail = createDeferred<Awaited<ReturnType<typeof getDiffDetail>>>();
     stageFileMock.mockReturnValueOnce(deferred.promise);
 
     renderWithQueryClient();
 
     const stageButton = await screen.findByRole("button", { name: "stage backend/src/app.ts" });
+    await waitFor(() => {
+      expect(getDiffDetailMock).toHaveBeenCalled();
+      expect(screen.queryByText("Loading diff...")).not.toBeInTheDocument();
+    });
+
+    getDiffDetailMock.mockImplementationOnce(async () => await deferredDiffDetail.promise);
     fireEvent.click(stageButton);
 
     await waitFor(() => {
@@ -239,7 +275,61 @@ describe("App", () => {
       expect(screen.getByRole("button", { name: "stage backend/src/app.ts" })).toHaveTextContent("staging...");
     });
 
+    expect(screen.queryByText("Loading diff...")).not.toBeInTheDocument();
+
     deferred.resolve({ ok: true, message: "Staged backend/src/app.ts" });
+    deferredDiffDetail.resolve({
+      mode: "git",
+      file: {
+        path: "backend/src/app.ts",
+        oldPath: "backend/src/app.ts",
+        newPath: "backend/src/app.ts",
+        languageHint: "ts",
+        isBinary: false,
+        tooLarge: false,
+        patch: [
+          "diff --git a/backend/src/app.ts b/backend/src/app.ts",
+          "index 1111111..2222222 100644",
+          "--- a/backend/src/app.ts",
+          "+++ b/backend/src/app.ts",
+          "@@ -1 +1 @@",
+          "-const app = oldValue",
+          "+const app = newValue",
+          "",
+        ].join("\n"),
+        stats: {
+          additions: 1,
+          deletions: 1,
+          hunks: 1,
+        },
+      },
+      old: {
+        file: {
+          name: "backend/src/app.ts",
+          contents: "const app = oldValue",
+        },
+        isBinary: false,
+        tooLarge: false,
+        error: false,
+      },
+      new: {
+        file: {
+          name: "backend/src/app.ts",
+          contents: "const app = newValue",
+        },
+        isBinary: false,
+        tooLarge: false,
+        error: false,
+      },
+    });
+
+    await waitFor(() => {
+      expect(getRepoSummaryMock.mock.calls.length).toBeGreaterThanOrEqual(2);
+    });
+
+    expect(screen.queryByText("Select a file in the sidebar to view its diff.")).not.toBeInTheDocument();
+
+    deferredFilesAfterRefresh.resolve([{ path: "backend/src/app.ts", status: "staged", contentHash: "hash-app" }]);
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "unstage backend/src/app.ts" })).toBeInTheDocument();
@@ -247,18 +337,13 @@ describe("App", () => {
   });
 
   it("uses stage-many endpoint for header stage all action", async () => {
-    getRepoSummaryMock.mockResolvedValue({
-      mode: "git",
-      repoName: "diffx-webapp",
-      branch: "main",
-      stagedCount: 0,
-      unstagedCount: 2,
-      untrackedCount: 0,
-    });
+    getRepoSummaryMock.mockResolvedValue(
+      buildGitRepoSummary({ unstagedCount: 2 }),
+    );
 
     getChangedFilesMock.mockResolvedValue([
-      { path: "backend/src/app.ts", status: "unstaged" },
-      { path: "backend/src/server.ts", status: "unstaged" },
+      { path: "backend/src/app.ts", status: "unstaged", contentHash: "hash-app" },
+      { path: "backend/src/server.ts", status: "unstaged", contentHash: "hash-server" },
     ]);
 
     getDiffSummaryMock.mockResolvedValue({
@@ -280,14 +365,6 @@ describe("App", () => {
     });
 
     getHealthMock.mockResolvedValue({ ok: true });
-    getLazyFileContentsMock.mockResolvedValue({
-      mode: "git",
-      side: "old",
-      file: null,
-      isBinary: false,
-      tooLarge: false,
-      languageHint: "ts",
-    });
 
     renderWithQueryClient();
 
@@ -307,16 +384,13 @@ describe("App", () => {
   });
 
   it("submits commit from files tab dock", async () => {
-    getRepoSummaryMock.mockResolvedValue({
-      mode: "git",
-      repoName: "diffx-webapp",
-      branch: "main",
-      stagedCount: 1,
-      unstagedCount: 0,
-      untrackedCount: 0,
-    });
+    getRepoSummaryMock.mockResolvedValue(
+      buildGitRepoSummary({ stagedCount: 1 }),
+    );
 
-    getChangedFilesMock.mockResolvedValue([{ path: "frontend/src/App.tsx", status: "staged" }]);
+    getChangedFilesMock.mockResolvedValue([
+      { path: "frontend/src/App.tsx", status: "staged", contentHash: "hash-frontend-app" },
+    ]);
 
     getDiffSummaryMock.mockResolvedValue({
       mode: "git",
@@ -332,15 +406,23 @@ describe("App", () => {
       },
     });
 
-    getHealthMock.mockResolvedValue({ ok: true });
-    getLazyFileContentsMock.mockResolvedValue({
+    getDiffDetailMock.mockResolvedValue({
       mode: "git",
-      side: "old",
-      file: { name: "frontend/src/App.tsx", contents: "" },
-      isBinary: false,
-      tooLarge: false,
-      languageHint: "tsx",
+      file: {
+        path: "frontend/src/App.tsx",
+        oldPath: "frontend/src/App.tsx",
+        newPath: "frontend/src/App.tsx",
+        languageHint: "tsx",
+        isBinary: false,
+        tooLarge: false,
+        patch: "",
+        stats: { additions: 0, deletions: 0, hunks: 0 },
+      },
+      old: { file: { name: "frontend/src/App.tsx", contents: "" }, isBinary: false, tooLarge: false, error: false },
+      new: { file: { name: "frontend/src/App.tsx", contents: "" }, isBinary: false, tooLarge: false, error: false },
     });
+
+    getHealthMock.mockResolvedValue({ ok: true });
 
     renderWithQueryClient();
 

@@ -1,4 +1,5 @@
 .app-shell {
+  --workspace-toolbar-height: 5.4rem;
   display: grid;
   grid-template-rows: 5.4rem minmax(0, 1fr) 3.2rem;
   height: 100dvh;
@@ -71,7 +72,7 @@
 }
 
 .diff-toolbar {
-  height: 5.4rem;
+  height: var(--workspace-toolbar-height);
   border-bottom: 0.5px solid var(--color-line);
   background: var(--color-bg-panel);
   display: flex;
@@ -339,6 +340,8 @@
 
 .sidebar-tabs {
   display: flex;
+  align-items: stretch;
+  height: var(--workspace-toolbar-height);
   border-bottom: 0.5px solid var(--color-line);
 }
 
@@ -348,7 +351,7 @@
   border-right: 0.5px solid var(--color-line);
   background: transparent;
   color: var(--color-text-dim);
-  height: 4.6rem;
+  height: 100%;
   font-size: 1.25rem;
   cursor: pointer;
   text-transform: uppercase;
@@ -718,7 +721,7 @@
   }
 
   .diff-toolbar {
-    height: auto;
+    height: var(--workspace-toolbar-height);
     padding: 0.8rem 1.2rem;
   }
 

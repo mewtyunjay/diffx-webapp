@@ -42,9 +42,9 @@ function renderFilesTab(options?: {
     <QueryClientProvider client={buildQueryClient()}>
       <FilesTab
         files={[
-          { path: "src/first.ts", status: "unstaged" },
-          { path: "src/second.ts", status: "untracked" },
-          { path: "src/already-staged.ts", status: "staged" },
+          { path: "src/first.ts", status: "unstaged", contentHash: "hash-first" },
+          { path: "src/second.ts", status: "untracked", contentHash: "hash-second" },
+          { path: "src/already-staged.ts", status: "staged", contentHash: "hash-staged" },
         ]}
         selectedFile={null}
         onSelectFile={onSelectFile}

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   ChangedFile,
   ChangedFileStatus,
+  DiffDetailResponse,
   DiffScope,
   DiffSummaryResponse,
   DiffViewMode,
@@ -9,7 +10,7 @@ import type {
 } from "@diffx/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { commitChanges, stageFile, stageManyFiles, unstageFile } from "../../services/api/actions";
-import { getDiffSummary } from "../../services/api/diff";
+import { getDiffDetail } from "../../services/api/diff";
 import { toUiError } from "../../services/api/error-ui";
 import { getChangedFiles } from "../../services/api/files";
 import { getHealth } from "../../services/api/health";
@@ -73,22 +74,26 @@ function syncRepoCounts(repo: RepoSummary, files: ChangedFile[]): RepoSummary {
 }
 
 function applyStageTransition(files: ChangedFile[], path: string): ChangedFile[] {
+  const contentHash = files.find((file) => file.path === path)?.contentHash ?? "none";
   const next = files.filter(
     (file) => !(file.path === path && (file.status === "unstaged" || file.status === "untracked")),
   );
 
-  next.push({ path, status: "staged" });
+  next.push({ path, status: "staged", contentHash });
   return sortChangedFiles(dedupeChangedFiles(next));
 }
 
 function applyStageManyTransition(files: ChangedFile[], paths: string[]): ChangedFile[] {
   const pathSet = new Set(paths);
+  const contentHashByPath = new Map(
+    paths.map((path) => [path, files.find((file) => file.path === path)?.contentHash ?? "none"]),
+  );
   const next = files.filter(
     (file) => !(pathSet.has(file.path) && (file.status === "unstaged" || file.status === "untracked")),
   );
 
   for (const path of pathSet) {
-    next.push({ path, status: "staged" });
+    next.push({ path, status: "staged", contentHash: contentHashByPath.get(path) ?? "none" });
   }
 
   return sortChangedFiles(dedupeChangedFiles(next));
@@ -119,8 +124,9 @@ function applyUnstageTransition(
   path: string,
   targetStatus: ChangedFileStatus,
 ): ChangedFile[] {
+  const contentHash = files.find((file) => file.path === path)?.contentHash ?? "none";
   const next = files.filter((file) => !(file.path === path && file.status === "staged"));
-  next.push({ path, status: targetStatus });
+  next.push({ path, status: targetStatus, contentHash });
   return sortChangedFiles(dedupeChangedFiles(next));
 }
 
@@ -135,6 +141,33 @@ function copyDiffCache(source: DiffSummaryResponse | undefined): DiffSummaryResp
           stats: { ...source.file.stats },
         }
       : null,
+  };
+}
+
+function copyDiffDetailCache(source: DiffDetailResponse | undefined): DiffDetailResponse | undefined {
+  if (!source) return undefined;
+
+  const copySide = (side: DiffDetailResponse["old"]): DiffDetailResponse["old"] => ({
+    file: side.file
+      ? {
+          ...side.file,
+        }
+      : null,
+    isBinary: side.isBinary,
+    tooLarge: side.tooLarge,
+    error: side.error,
+  });
+
+  return {
+    mode: source.mode,
+    file: source.file
+      ? {
+          ...source.file,
+          stats: { ...source.file.stats },
+        }
+      : null,
+    old: copySide(source.old),
+    new: copySide(source.new),
   };
 }
 
@@ -206,10 +239,13 @@ export function AppShell({ initialRepo }: AppShellProps) {
     refetchInterval: 15000,
   });
 
+  const repo = repoQuery.data ?? initialRepo;
+  const filesQueryKey = queryKeys.files;
+
   const filesQuery = useQuery({
-    queryKey: queryKeys.files,
+    queryKey: filesQueryKey,
     queryFn: ({ signal }) => getChangedFiles({ signal }),
-    refetchInterval: 15000,
+    placeholderData: (previousData) => previousData,
   });
 
   const healthQuery = useQuery({
@@ -222,34 +258,48 @@ export function AppShell({ initialRepo }: AppShellProps) {
   const files = filesQuery.data ?? [];
 
   useEffect(() => {
-    if (files.length === 0) {
-      setSelectedFile(null);
-      return;
-    }
-
     if (!selectedFile) {
-      setSelectedFile(files[0]);
+      if (files.length > 0) {
+        setSelectedFile(files[0]);
+      }
+
       return;
     }
 
-    const stillExists = files.some(
+    const exactMatch = files.find(
       (entry) => entry.path === selectedFile.path && entry.status === selectedFile.status,
     );
 
-    if (!stillExists) {
-      setSelectedFile(files[0]);
+    if (exactMatch) {
+      return;
     }
-  }, [files, selectedFile]);
+
+    const pathMatch = files.find((entry) => entry.path === selectedFile.path);
+
+    if (pathMatch) {
+      if (pathMatch.status !== selectedFile.status) {
+        setSelectedFile(pathMatch);
+      }
+
+      return;
+    }
+
+    if (files.length === 0 && filesQuery.isFetching) {
+      return;
+    }
+
+    setSelectedFile(files[0] ?? null);
+  }, [files, filesQuery.isFetching, selectedFile]);
 
   const selectedScope = useMemo(() => toScope(selectedFile), [selectedFile]);
 
-  const diffQuery = useQuery({
+  const diffDetailQuery = useQuery({
     queryKey:
       selectedFile && selectedScope
-        ? queryKeys.diff(selectedFile.path, selectedScope, 3)
-        : ["diff", "none"],
+        ? queryKeys.diffDetail(selectedFile.path, 3, selectedFile.contentHash)
+        : ["diffDetail", "none"],
     queryFn: async ({ signal }) =>
-      await getDiffSummary(
+      await getDiffDetail(
         {
           path: selectedFile!.path,
           scope: selectedScope!,
@@ -258,27 +308,55 @@ export function AppShell({ initialRepo }: AppShellProps) {
         { signal },
       ),
     enabled: Boolean(selectedFile && selectedScope),
+    placeholderData: (previousData) => previousData,
   });
 
   const selectedIndex = selectedFile
     ? files.findIndex((entry) => entry.path === selectedFile.path && entry.status === selectedFile.status)
     : -1;
 
-  const canGoPrevious = selectedIndex > 0;
-  const canGoNext = selectedIndex >= 0 && selectedIndex < files.length - 1;
-  const fileChangeCountLabel = files.length === 0 ? "0/0" : `${Math.max(selectedIndex + 1, 0)}/${files.length}`;
+  const resolvedSelectedIndex =
+    selectedFile && selectedIndex < 0
+      ? files.findIndex((entry) => entry.path === selectedFile.path)
+      : selectedIndex;
 
-  const repo = repoQuery.data ?? initialRepo;
+  const canGoPrevious = resolvedSelectedIndex > 0;
+  const canGoNext = resolvedSelectedIndex >= 0 && resolvedSelectedIndex < files.length - 1;
+  const fileChangeCountLabel = files.length === 0 ? "0/0" : `${Math.max(resolvedSelectedIndex + 1, 1)}/${files.length}`;
+
+  function getContentHashByPath(path: string): string {
+    const currentFiles = queryClient.getQueryData<ChangedFile[]>(filesQueryKey) ?? files;
+    return currentFiles.find((file) => file.path === path)?.contentHash ?? "none";
+  }
+
+  function getContentHashMap(paths: string[]): Map<string, string> {
+    const currentFiles = queryClient.getQueryData<ChangedFile[]>(filesQueryKey) ?? files;
+    const map = new Map<string, string>();
+
+    for (const path of paths) {
+      map.set(path, currentFiles.find((file) => file.path === path)?.contentHash ?? "none");
+    }
+
+    return map;
+  }
 
   async function cancelFileMutationQueriesForPaths(paths: string[]) {
     const uniquePaths = [...new Set(paths)];
+    const contentHashByPath = getContentHashMap(uniquePaths);
 
     await Promise.all([
-      queryClient.cancelQueries({ queryKey: queryKeys.files }),
+      queryClient.cancelQueries({ queryKey: queryKeys.filesRoot }),
       queryClient.cancelQueries({ queryKey: queryKeys.repo }),
       ...uniquePaths.flatMap((path) => [
-        queryClient.cancelQueries({ queryKey: queryKeys.diff(path, "staged", 3), exact: true }),
-        queryClient.cancelQueries({ queryKey: queryKeys.diff(path, "unstaged", 3), exact: true }),
+        queryClient.cancelQueries({
+          queryKey: queryKeys.diff(path, "staged", 3, contentHashByPath.get(path) ?? "none"),
+          exact: true,
+        }),
+        queryClient.cancelQueries({
+          queryKey: queryKeys.diff(path, "unstaged", 3, contentHashByPath.get(path) ?? "none"),
+          exact: true,
+        }),
+        queryClient.cancelQueries({ queryKey: queryKeys.diffDetailPath(path) }),
         queryClient.cancelQueries({ queryKey: queryKeys.fileContents(path, "staged", "old"), exact: true }),
         queryClient.cancelQueries({ queryKey: queryKeys.fileContents(path, "staged", "new"), exact: true }),
         queryClient.cancelQueries({ queryKey: queryKeys.fileContents(path, "unstaged", "old"), exact: true }),
@@ -308,13 +386,21 @@ export function AppShell({ initialRepo }: AppShellProps) {
 
   function revalidateAfterFileMutations(paths: string[]) {
     const uniquePaths = [...new Set(paths)];
+    const contentHashByPath = getContentHashMap(uniquePaths);
 
     void Promise.all([
       queryClient.invalidateQueries({ queryKey: queryKeys.repo }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.files }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.filesRoot }),
       ...uniquePaths.flatMap((path) => [
-        queryClient.invalidateQueries({ queryKey: queryKeys.diff(path, "staged", 3), exact: true }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.diff(path, "unstaged", 3), exact: true }),
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.diff(path, "staged", 3, contentHashByPath.get(path) ?? "none"),
+          exact: true,
+        }),
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.diff(path, "unstaged", 3, contentHashByPath.get(path) ?? "none"),
+          exact: true,
+        }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.diffDetailPath(path) }),
         queryClient.invalidateQueries({ queryKey: queryKeys.fileContents(path, "staged", "old"), exact: true }),
         queryClient.invalidateQueries({ queryKey: queryKeys.fileContents(path, "staged", "new"), exact: true }),
         queryClient.invalidateQueries({ queryKey: queryKeys.fileContents(path, "unstaged", "old"), exact: true }),
@@ -328,10 +414,10 @@ export function AppShell({ initialRepo }: AppShellProps) {
   }
 
   function updateFilesAndRepo(updater: (currentFiles: ChangedFile[]) => ChangedFile[]): ChangedFile[] {
-    const currentFiles = queryClient.getQueryData<ChangedFile[]>(queryKeys.files) ?? files;
+    const currentFiles = queryClient.getQueryData<ChangedFile[]>(filesQueryKey) ?? files;
     const nextFiles = updater(currentFiles);
 
-    queryClient.setQueryData(queryKeys.files, nextFiles);
+    queryClient.setQueryData(filesQueryKey, nextFiles);
 
     const currentRepo = queryClient.getQueryData<RepoSummary>(queryKeys.repo) ?? repo;
     queryClient.setQueryData(queryKeys.repo, syncRepoCounts(currentRepo, nextFiles));
@@ -342,8 +428,9 @@ export function AppShell({ initialRepo }: AppShellProps) {
   async function refreshQueries() {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: queryKeys.repo }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.files }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.filesRoot }),
       queryClient.invalidateQueries({ queryKey: ["diff"] }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.diffDetailRoot }),
       queryClient.invalidateQueries({ queryKey: ["fileContents"] }),
       queryClient.invalidateQueries({ queryKey: queryKeys.health }),
     ]);
@@ -352,23 +439,32 @@ export function AppShell({ initialRepo }: AppShellProps) {
   const stageMutation = useMutation({
     mutationFn: async (path: string) => await stageFile({ path }),
     onMutate: async (path) => {
+      const contentHash = getContentHashByPath(path);
       await cancelFileMutationQueries(path);
 
-      updateFilesAndRepo((currentFiles) => applyStageTransition(currentFiles, path));
+      const nextFiles = updateFilesAndRepo((currentFiles) => applyStageTransition(currentFiles, path));
 
       const unstagedDiff = copyDiffCache(
-        queryClient.getQueryData<DiffSummaryResponse>(queryKeys.diff(path, "unstaged", 3)),
+        queryClient.getQueryData<DiffSummaryResponse>(queryKeys.diff(path, "unstaged", 3, contentHash)),
+      );
+      const unstagedDiffDetail = copyDiffDetailCache(
+        queryClient.getQueryData<DiffDetailResponse>(queryKeys.diffDetail(path, 3, contentHash)),
       );
 
       if (unstagedDiff) {
-        queryClient.setQueryData(queryKeys.diff(path, "staged", 3), unstagedDiff);
+        queryClient.setQueryData(queryKeys.diff(path, "staged", 3, contentHash), unstagedDiff);
       }
 
-      queryClient.removeQueries({ queryKey: queryKeys.diff(path, "unstaged", 3), exact: true });
+      if (unstagedDiffDetail) {
+        queryClient.setQueryData(queryKeys.diffDetail(path, 3, contentHash), unstagedDiffDetail);
+      }
+
+      queryClient.removeQueries({ queryKey: queryKeys.diff(path, "unstaged", 3, contentHash), exact: true });
       clearFileMutationContents(path);
 
       if (selectedFile && selectedFile.path === path) {
-        setSelectedFile({ path, status: "staged" });
+        const matching = nextFiles.find((file) => file.path === path && file.status === "staged");
+        setSelectedFile(matching ?? selectedFile);
       }
     },
     onSettled: (_result, _error, path) => {
@@ -382,26 +478,36 @@ export function AppShell({ initialRepo }: AppShellProps) {
     onMutate: async (paths) => {
       const uniquePaths = [...new Set(paths)];
       const pathSet = new Set(uniquePaths);
+      const contentHashByPath = getContentHashMap(uniquePaths);
 
       await cancelFileMutationQueriesForPaths(uniquePaths);
-      updateFilesAndRepo((currentFiles) => applyStageManyTransition(currentFiles, uniquePaths));
+      const nextFiles = updateFilesAndRepo((currentFiles) => applyStageManyTransition(currentFiles, uniquePaths));
 
       for (const path of uniquePaths) {
+        const contentHash = contentHashByPath.get(path) ?? "none";
         const unstagedDiff = copyDiffCache(
-          queryClient.getQueryData<DiffSummaryResponse>(queryKeys.diff(path, "unstaged", 3)),
+          queryClient.getQueryData<DiffSummaryResponse>(queryKeys.diff(path, "unstaged", 3, contentHash)),
+        );
+        const unstagedDiffDetail = copyDiffDetailCache(
+          queryClient.getQueryData<DiffDetailResponse>(queryKeys.diffDetail(path, 3, contentHash)),
         );
 
         if (unstagedDiff) {
-          queryClient.setQueryData(queryKeys.diff(path, "staged", 3), unstagedDiff);
+          queryClient.setQueryData(queryKeys.diff(path, "staged", 3, contentHash), unstagedDiff);
         }
 
-        queryClient.removeQueries({ queryKey: queryKeys.diff(path, "unstaged", 3), exact: true });
+        if (unstagedDiffDetail) {
+          queryClient.setQueryData(queryKeys.diffDetail(path, 3, contentHash), unstagedDiffDetail);
+        }
+
+        queryClient.removeQueries({ queryKey: queryKeys.diff(path, "unstaged", 3, contentHash), exact: true });
       }
 
       clearFileMutationContentsForPaths(uniquePaths);
 
       if (selectedFile && pathSet.has(selectedFile.path)) {
-        setSelectedFile({ path: selectedFile.path, status: "staged" });
+        const matching = nextFiles.find((file) => file.path === selectedFile.path && file.status === "staged");
+        setSelectedFile(matching ?? selectedFile);
       }
     },
     onSettled: (_result, _error, paths) => {
@@ -413,10 +519,14 @@ export function AppShell({ initialRepo }: AppShellProps) {
   const unstageMutation = useMutation({
     mutationFn: async (path: string) => await unstageFile({ path }),
     onMutate: async (path) => {
+      const contentHash = getContentHashByPath(path);
       await cancelFileMutationQueries(path);
 
       const stagedDiff = copyDiffCache(
-        queryClient.getQueryData<DiffSummaryResponse>(queryKeys.diff(path, "staged", 3)),
+        queryClient.getQueryData<DiffSummaryResponse>(queryKeys.diff(path, "staged", 3, contentHash)),
+      );
+      const stagedDiffDetail = copyDiffDetailCache(
+        queryClient.getQueryData<DiffDetailResponse>(queryKeys.diffDetail(path, 3, contentHash)),
       );
 
       const nextFiles = updateFilesAndRepo((currentFiles) => {
@@ -425,10 +535,14 @@ export function AppShell({ initialRepo }: AppShellProps) {
       });
 
       if (stagedDiff) {
-        queryClient.setQueryData(queryKeys.diff(path, "unstaged", 3), stagedDiff);
+        queryClient.setQueryData(queryKeys.diff(path, "unstaged", 3, contentHash), stagedDiff);
       }
 
-      queryClient.removeQueries({ queryKey: queryKeys.diff(path, "staged", 3), exact: true });
+      if (stagedDiffDetail) {
+        queryClient.setQueryData(queryKeys.diffDetail(path, 3, contentHash), stagedDiffDetail);
+      }
+
+      queryClient.removeQueries({ queryKey: queryKeys.diff(path, "staged", 3, contentHash), exact: true });
       clearFileMutationContents(path);
 
       if (
@@ -497,21 +611,20 @@ export function AppShell({ initialRepo }: AppShellProps) {
       <main className="workspace">
         <DiffPanel
           selectedFile={selectedFile}
-          scope={selectedScope}
           fileChangeCountLabel={fileChangeCountLabel}
           viewMode={viewMode}
           onViewModeChange={setViewMode}
           onPreviousFile={() => {
             if (!canGoPrevious) return;
-            setSelectedFile(files[selectedIndex - 1]);
+            setSelectedFile(files[resolvedSelectedIndex - 1]);
           }}
           onNextFile={() => {
             if (!canGoNext) return;
-            setSelectedFile(files[selectedIndex + 1]);
+            setSelectedFile(files[resolvedSelectedIndex + 1]);
           }}
           canGoPrevious={canGoPrevious}
           canGoNext={canGoNext}
-          diffQuery={diffQuery}
+          diffQuery={diffDetailQuery}
         />
 
         <SidebarShell

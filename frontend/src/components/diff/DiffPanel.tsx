@@ -2,22 +2,17 @@ import { useMemo, type ReactNode } from "react";
 import type { FileContents as PierreFileContents } from "@pierre/diffs";
 import type {
   ChangedFile,
-  DiffScope,
-  DiffSummaryResponse,
+  DiffDetailResponse,
   DiffViewMode,
-  FileContentsResponse,
 } from "@diffx/contracts";
-import { useQuery, type UseQueryResult } from "@tanstack/react-query";
-import { getLazyFileContents } from "../../services/api/file-contents";
+import type { UseQueryResult } from "@tanstack/react-query";
 import { toUiError } from "../../services/api/error-ui";
-import { queryKeys } from "../../services/query-keys";
 import { DiffFileHeader } from "./DiffFileHeader";
 import { DiffToolbar } from "./DiffToolbar";
 import { PierreDiffRenderer } from "./PierreDiffRenderer";
 
 type DiffPanelProps = {
   selectedFile: ChangedFile | null;
-  scope: DiffScope | null;
   fileChangeCountLabel: string;
   viewMode: DiffViewMode;
   onViewModeChange: (mode: DiffViewMode) => void;
@@ -25,19 +20,18 @@ type DiffPanelProps = {
   onNextFile: () => void;
   canGoPrevious: boolean;
   canGoNext: boolean;
-  diffQuery: UseQueryResult<DiffSummaryResponse, Error>;
+  diffQuery: UseQueryResult<DiffDetailResponse, Error>;
 };
 
-function toPierreFile(name: string, response: FileContentsResponse): PierreFileContents {
+function toPierreFile(name: string, contents: string): PierreFileContents {
   return {
     name,
-    contents: response.file?.contents ?? "",
+    contents,
   };
 }
 
 export function DiffPanel({
   selectedFile,
-  scope,
   fileChangeCountLabel,
   viewMode,
   onViewModeChange,
@@ -48,52 +42,31 @@ export function DiffPanel({
   diffQuery,
 }: DiffPanelProps) {
   const diffFile = diffQuery.data?.file;
-  const canLoadContents = Boolean(
-    selectedFile && scope && diffFile && diffFile.patch && !diffFile.isBinary && !diffFile.tooLarge,
-  );
-
-  const oldFileQuery = useQuery({
-    queryKey:
-      selectedFile && scope
-        ? queryKeys.fileContents(selectedFile.path, scope, "old")
-        : ["fileContents", "old", "none"],
-    queryFn: async ({ signal }) =>
-      await getLazyFileContents({ path: selectedFile!.path, scope: scope!, side: "old" }, { signal }),
-    enabled: canLoadContents,
-  });
-
-  const newFileQuery = useQuery({
-    queryKey:
-      selectedFile && scope
-        ? queryKeys.fileContents(selectedFile.path, scope, "new")
-        : ["fileContents", "new", "none"],
-    queryFn: async ({ signal }) =>
-      await getLazyFileContents({ path: selectedFile!.path, scope: scope!, side: "new" }, { signal }),
-    enabled: canLoadContents,
-  });
 
   const fullFiles = useMemo(() => {
-    if (!diffFile || !oldFileQuery.data || !newFileQuery.data) {
+    if (!diffFile || !diffQuery.data) {
       return null;
     }
 
     return {
-      oldFile: toPierreFile(diffFile.oldPath ?? diffFile.path, oldFileQuery.data),
-      newFile: toPierreFile(diffFile.newPath ?? diffFile.path, newFileQuery.data),
+      oldFile: toPierreFile(
+        diffFile.oldPath ?? diffFile.path,
+        diffQuery.data.old.file?.contents ?? "",
+      ),
+      newFile: toPierreFile(
+        diffFile.newPath ?? diffFile.path,
+        diffQuery.data.new.file?.contents ?? "",
+      ),
     };
-  }, [diffFile, oldFileQuery.data, newFileQuery.data]);
+  }, [diffFile, diffQuery.data]);
 
   const fullContextUnavailable =
-    oldFileQuery.data?.isBinary === true ||
-    oldFileQuery.data?.tooLarge === true ||
-    newFileQuery.data?.isBinary === true ||
-    newFileQuery.data?.tooLarge === true;
-
-  const isLoadingFullContext =
-    canLoadContents &&
-    !fullFiles &&
-    !fullContextUnavailable &&
-    (oldFileQuery.isPending || newFileQuery.isPending || oldFileQuery.isFetching || newFileQuery.isFetching);
+    diffQuery.data?.old.isBinary === true ||
+    diffQuery.data?.old.tooLarge === true ||
+    diffQuery.data?.old.error === true ||
+    diffQuery.data?.new.isBinary === true ||
+    diffQuery.data?.new.tooLarge === true ||
+    diffQuery.data?.new.error === true;
 
   if (!selectedFile) {
     return (
@@ -123,38 +96,17 @@ export function DiffPanel({
     content = <p className="empty-state">Patch payload is empty.</p>;
   } else if (fullFiles && !fullContextUnavailable) {
     content = (
-      <>
-        <PierreDiffRenderer
-          mode="full"
-          oldFile={fullFiles.oldFile}
-          newFile={fullFiles.newFile}
-          viewMode={viewMode}
-        />
-      </>
+      <PierreDiffRenderer
+        mode="full"
+        oldFile={fullFiles.oldFile}
+        newFile={fullFiles.newFile}
+        viewMode={viewMode}
+      />
     );
-  } else if (isLoadingFullContext) {
-    content = <p className="inline-note">Loading full diff...</p>;
   } else {
-    let fallbackNote: ReactNode = null;
-
-    if (oldFileQuery.isError || newFileQuery.isError) {
-      const fullContextError = oldFileQuery.isError
-        ? toUiError(oldFileQuery.error)
-        : newFileQuery.isError
-          ? toUiError(newFileQuery.error)
-          : null;
-      fallbackNote = (
-        <p className="inline-note">
-          {(fullContextError?.retryable ?? true)
-            ? `${fullContextError?.message ?? "Unable to load full context."} Showing patch-only view for now.`
-            : `${fullContextError?.message ?? "Full context unavailable."} Showing patch-only view.`}
-        </p>
-      );
-    } else if (fullContextUnavailable) {
-      fallbackNote = (
-        <p className="inline-note">Full context unavailable for this file, showing patch-only view.</p>
-      );
-    }
+    const fallbackNote = fullContextUnavailable
+      ? <p className="inline-note">Full context unavailable for this file, showing patch-only view.</p>
+      : null;
 
     content = (
       <>
