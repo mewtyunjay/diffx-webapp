@@ -1,7 +1,9 @@
 .app-shell {
   display: grid;
-  grid-template-rows: 4.8rem minmax(0, 1fr) 2.8rem;
-  min-height: 100vh;
+  grid-template-rows: 5.4rem minmax(0, 1fr) 3.2rem;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
   background: var(--color-bg);
   color: var(--color-text);
 }
@@ -10,7 +12,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1.2rem;
+  gap: 1.3rem;
   padding: 0 1.6rem;
   border-bottom: 0.5px solid var(--color-line);
   background: var(--color-bg-panel);
@@ -32,13 +34,13 @@
 
 .wordmark {
   color: var(--color-text-bright);
-  font-size: 1rem;
+  font-size: 1.25rem;
   letter-spacing: 0.2em;
 }
 
 .repo-name {
   color: var(--color-text-bright);
-  font-size: 1.1rem;
+  font-size: 1.35rem;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -47,8 +49,8 @@
 .chip {
   border: 0.5px solid var(--color-border);
   color: var(--color-text-dim);
-  padding: 0.4rem 0.6rem;
-  font-size: 0.9rem;
+  padding: 0.55rem 0.8rem;
+  font-size: 1.2rem;
   white-space: nowrap;
 }
 
@@ -56,6 +58,7 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) clamp(20rem, 28vw, 40rem);
   min-height: 0;
+  overflow: hidden;
 }
 
 .diff-panel {
@@ -64,17 +67,18 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
+  overflow: hidden;
 }
 
 .diff-toolbar {
-  height: 4.8rem;
+  height: 5.4rem;
   border-bottom: 0.5px solid var(--color-line);
   background: var(--color-bg-panel);
   display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 0.8rem;
-  padding: 0 1.2rem;
+  gap: 1rem;
+  padding: 0 1.4rem;
 }
 
 .diff-toolbar-group {
@@ -85,18 +89,83 @@
 
 .diff-toolbar-path {
   color: var(--color-text-dim);
-  font-size: 0.9rem;
+  font-size: 1.15rem;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.diff-mode-switch {
+  justify-self: end;
+}
+
+.diff-file-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-width: 0;
+  padding: 0.9rem 1.4rem;
+  border-bottom: 0.5px solid var(--color-line);
+  background: var(--color-bg-panel);
+}
+
+.diff-file-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.7rem;
+  min-width: 0;
+}
+
+.diff-ext-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 3.2rem;
+  padding: 0.25rem 0.5rem;
+  border: 0.5px solid var(--color-border);
+  background: rgba(122, 155, 168, 0.08);
+  color: var(--color-text-bright);
+  font-size: 1rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.diff-file-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text-bright);
+  font-size: 1.28rem;
+}
+
+.diff-file-stats {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.8rem;
+  border: 0.5px solid var(--color-border);
+  background: rgba(122, 155, 168, 0.04);
+  padding: 0.25rem 0.6rem;
+  font-size: 1.1rem;
+  letter-spacing: 0.1em;
+  flex-shrink: 0;
+}
+
+.diff-file-add {
+  color: var(--color-success);
+}
+
+.diff-file-del {
+  color: var(--color-error);
 }
 
 .hud-button {
   border: 0.5px solid var(--color-border);
   background: transparent;
   color: var(--color-text);
-  padding: 0.6rem 0.9rem;
-  font-size: 0.9rem;
+  padding: 0.75rem 1.1rem;
+  font-size: 1.2rem;
   text-transform: uppercase;
   letter-spacing: 0.14em;
   cursor: pointer;
@@ -121,7 +190,36 @@
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 1rem 1.2rem;
+  padding: 1.2rem 1.4rem;
+}
+
+.diff-content,
+.sidebar-content {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(122, 155, 168, 0.45) rgba(13, 16, 18, 0.85);
+}
+
+.diff-content::-webkit-scrollbar,
+.sidebar-content::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.diff-content::-webkit-scrollbar-track,
+.sidebar-content::-webkit-scrollbar-track {
+  background: rgba(13, 16, 18, 0.85);
+}
+
+.diff-content::-webkit-scrollbar-thumb,
+.sidebar-content::-webkit-scrollbar-thumb {
+  background: rgba(122, 155, 168, 0.45);
+  border-radius: 999px;
+  border: 1px solid rgba(13, 16, 18, 0.85);
+}
+
+.diff-content::-webkit-scrollbar-thumb:hover,
+.sidebar-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(122, 155, 168, 0.65);
 }
 
 .pierre-diff-root {
@@ -130,6 +228,8 @@
   --pierre-gutter-add: var(--color-diff-add-marker);
   --pierre-gutter-del: var(--color-diff-del-marker);
   --pierre-chunk-bg: var(--color-diff-chunk-bg);
+  --diffs-font-size: 14px;
+  --diffs-line-height: 22px;
 }
 
 .diff-lazy-controls {
@@ -163,6 +263,7 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
+  overflow: hidden;
 }
 
 .sidebar-tabs {
@@ -176,8 +277,8 @@
   border-right: 0.5px solid var(--color-line);
   background: transparent;
   color: var(--color-text-dim);
-  height: 4rem;
-  font-size: 1rem;
+  height: 4.6rem;
+  font-size: 1.25rem;
   cursor: pointer;
   text-transform: uppercase;
   letter-spacing: 0.16em;
@@ -227,8 +328,11 @@
   background: transparent;
   color: var(--color-text);
   text-align: left;
-  padding: 0.6rem 0.8rem;
+  padding: 0.7rem 0.9rem;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
 }
 
 .file-row:hover {
@@ -243,10 +347,32 @@
 
 .file-row-name {
   display: block;
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 1.1rem;
+  font-size: 1.32rem;
+}
+
+.file-row-stats {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: 0.5px solid var(--color-border);
+  background: rgba(122, 155, 168, 0.06);
+  padding: 0.3rem 0.5rem;
+  font-size: 1rem;
+  letter-spacing: 0.08em;
+  flex-shrink: 0;
+}
+
+.file-row-stat-add {
+  color: var(--color-success);
+}
+
+.file-row-stat-del {
+  color: var(--color-error);
 }
 
 .commit-box {
@@ -261,7 +387,7 @@
   border: 0.5px solid var(--color-border);
   background: transparent;
   color: var(--color-text);
-  min-height: 9rem;
+  min-height: 10rem;
   resize: vertical;
   padding: 0.8rem;
   font: inherit;
@@ -270,7 +396,7 @@
 .selection-value {
   color: var(--color-text-bright);
   margin: 0;
-  font-size: 1.1rem;
+  font-size: 1.32rem;
   word-break: break-all;
 }
 
@@ -281,7 +407,7 @@
   border-top: 0.5px solid var(--color-line);
   background: var(--color-bg-panel);
   padding: 0 1.2rem;
-  font-size: 0.9rem;
+  font-size: 1.15rem;
   color: var(--color-text-dim);
 }
 
@@ -314,7 +440,7 @@
 
 .hud-label {
   margin: 0;
-  font-size: 0.8rem;
+  font-size: 1rem;
   color: var(--color-text-dim);
   text-transform: uppercase;
   letter-spacing: 0.16em;
@@ -324,7 +450,7 @@
 .empty-state,
 .error-note {
   margin: 0;
-  font-size: 1rem;
+  font-size: 1.18rem;
   color: var(--color-text-dim);
 }
 
@@ -353,14 +479,14 @@
 
 .gate-card h1 {
   margin: 1rem 0;
-  font-size: 2rem;
+  font-size: 2.2rem;
   font-weight: 400;
   color: var(--color-text-bright);
 }
 
 .gate-card p {
   margin: 0;
-  font-size: 1.2rem;
+  font-size: 1.3rem;
   color: var(--color-text);
 }
 
@@ -377,13 +503,18 @@
   }
 
   .diff-mode-switch {
-    grid-column: 1;
-    grid-row: 2;
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
   }
 
   .diff-toolbar-path {
-    grid-column: 2;
-    grid-row: 1 / span 2;
+    grid-column: 1 / span 2;
+    grid-row: 2;
+  }
+
+  .diff-file-header {
+    padding: 0.8rem 1.2rem;
   }
 }
 

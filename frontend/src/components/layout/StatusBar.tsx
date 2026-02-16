@@ -2,10 +2,17 @@ type StatusBarProps = {
   connected: boolean;
   stagedCount: number;
   unstagedCount: number;
+  untrackedCount: number;
   selectedPath: string | null;
 };
 
-export function StatusBar({ connected, stagedCount, unstagedCount, selectedPath }: StatusBarProps) {
+export function StatusBar({
+  connected,
+  stagedCount,
+  unstagedCount,
+  untrackedCount,
+  selectedPath,
+}: StatusBarProps) {
   return (
     <footer className="statusbar">
       <span className="status-item">
@@ -14,6 +21,7 @@ export function StatusBar({ connected, stagedCount, unstagedCount, selectedPath 
       </span>
       <span className="status-item">staged:{stagedCount}</span>
       <span className="status-item">unstaged:{unstagedCount}</span>
+      <span className="status-item">untracked:{untrackedCount}</span>
       <span className="status-item status-path">{selectedPath ?? "no file selected"}</span>
     </footer>
   );

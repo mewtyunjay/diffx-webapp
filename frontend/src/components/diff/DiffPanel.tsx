@@ -10,6 +10,7 @@ import type {
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { getLazyFileContents } from "../../services/api/file-contents";
 import { queryKeys } from "../../services/query-keys";
+import { DiffFileHeader } from "./DiffFileHeader";
 import { DiffToolbar } from "./DiffToolbar";
 import { PierreDiffRenderer } from "./PierreDiffRenderer";
 
@@ -121,7 +122,6 @@ export function DiffPanel({
   } else if (fullFiles && !fullContextUnavailable) {
     content = (
       <>
-        <p className="inline-note">Click line-info separators to expand unchanged context.</p>
         <PierreDiffRenderer
           mode="full"
           oldFile={fullFiles.oldFile}
@@ -164,6 +164,16 @@ export function DiffPanel({
         canGoPrevious={canGoPrevious}
         canGoNext={canGoNext}
       />
+
+      {diffFile ? (
+        <DiffFileHeader
+          path={diffFile.path}
+          oldPath={diffFile.oldPath}
+          newPath={diffFile.newPath}
+          additions={diffFile.stats.additions}
+          deletions={diffFile.stats.deletions}
+        />
+      ) : null}
 
       <div className="diff-content">{content}</div>
     </section>

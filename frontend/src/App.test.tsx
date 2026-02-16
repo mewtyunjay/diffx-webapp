@@ -137,8 +137,5 @@ describe("App", () => {
     expect(await screen.findByRole("tab", { name: "Files" })).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "backend/src/app.ts" })).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "split" })).toBeInTheDocument();
-    expect(
-      await screen.findByText("Click line-info separators to expand unchanged context."),
-    ).toBeInTheDocument();
   });
 });

@@ -29,6 +29,7 @@ export function PierreDiffRenderer(props: PierreDiffRendererProps) {
       hunkSeparators: "line-info",
       lineDiffType: "word-alt",
       overflow: "wrap",
+      disableFileHeader: true,
       expandUnchanged: false,
       expansionLineCount: 100,
       themeType: "dark",

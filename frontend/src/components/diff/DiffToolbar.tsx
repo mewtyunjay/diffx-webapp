@@ -30,6 +30,8 @@ export function DiffToolbar({
         </button>
       </div>
 
+      <div className="diff-toolbar-path">{selectedPath ?? "select a file to inspect"}</div>
+
       <div className="diff-toolbar-group diff-mode-switch">
         <button
           className={viewMode === "split" ? "hud-button hud-button-active" : "hud-button"}
@@ -46,8 +48,6 @@ export function DiffToolbar({
           unified
         </button>
       </div>
-
-      <div className="diff-toolbar-path">{selectedPath ?? "select a file to inspect"}</div>
     </div>
   );
 }

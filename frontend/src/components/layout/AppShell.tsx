@@ -147,16 +147,9 @@ export function AppShell({ initialRepo }: AppShellProps) {
     return <NonGitGate repoName={repo.repoName} />;
   }
 
-  const syncState =
-    repoQuery.isFetching || filesQuery.isFetching || diffQuery.isFetching || healthQuery.isFetching
-      ? "syncing"
-      : repoQuery.isError || filesQuery.isError || diffQuery.isError || healthQuery.isError
-        ? "error"
-        : "idle";
-
   return (
     <div className="app-shell">
-      <Topbar repo={repo} syncState={syncState} onRefresh={() => void refreshQueries()} />
+      <Topbar repo={repo} onRefresh={() => void refreshQueries()} />
 
       <main className="workspace">
         <DiffPanel
@@ -198,6 +191,7 @@ export function AppShell({ initialRepo }: AppShellProps) {
         connected={!healthQuery.isError && healthQuery.data?.ok === true}
         stagedCount={repo.stagedCount}
         unstagedCount={repo.unstagedCount}
+        untrackedCount={repo.untrackedCount}
         selectedPath={selectedFile?.path ?? null}
       />
     </div>
