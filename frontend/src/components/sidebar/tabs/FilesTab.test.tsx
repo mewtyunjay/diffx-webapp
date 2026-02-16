@@ -1,5 +1,5 @@
 import React from "react";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DiffSummaryResponse } from "@diffx/contracts";
@@ -22,13 +22,21 @@ function buildQueryClient() {
 }
 
 function renderFilesTab(options?: {
-  isMutatingFile?: boolean;
+  pendingMutationsByPath?: ReadonlyMap<string, "stage" | "unstage">;
   onStageFile?: (path: string) => void;
   onUnstageFile?: (path: string) => void;
+  onStageFiles?: (paths: string[]) => void;
+  onUnstageFiles?: (paths: string[]) => void;
+  stagedCount?: number;
+  isCommitting?: boolean;
+  onCommitChanges?: (message: string) => void;
 }) {
   const onSelectFile = vi.fn();
   const onStageFile = options?.onStageFile ?? vi.fn();
   const onUnstageFile = options?.onUnstageFile ?? vi.fn();
+  const onStageFiles = options?.onStageFiles ?? vi.fn();
+  const onUnstageFiles = options?.onUnstageFiles ?? vi.fn();
+  const onCommitChanges = options?.onCommitChanges ?? vi.fn();
 
   render(
     <QueryClientProvider client={buildQueryClient()}>
@@ -42,7 +50,12 @@ function renderFilesTab(options?: {
         onSelectFile={onSelectFile}
         onStageFile={onStageFile}
         onUnstageFile={onUnstageFile}
-        isMutatingFile={options?.isMutatingFile ?? false}
+        onStageFiles={onStageFiles}
+        onUnstageFiles={onUnstageFiles}
+        pendingMutationsByPath={options?.pendingMutationsByPath ?? new Map()}
+        stagedCount={options?.stagedCount ?? 1}
+        isCommitting={options?.isCommitting ?? false}
+        onCommitChanges={onCommitChanges}
       />
     </QueryClientProvider>,
   );
@@ -51,7 +64,21 @@ function renderFilesTab(options?: {
     onSelectFile,
     onStageFile,
     onUnstageFile,
+    onStageFiles,
+    onUnstageFiles,
+    onCommitChanges,
   };
+}
+
+function getGroupAction(label: "staged" | "unstaged" | "untracked"): HTMLButtonElement {
+  const header = screen.getByText(new RegExp(`^${label} \\(`, "i"));
+  const section = header.closest("section");
+
+  if (!section) {
+    throw new Error(`Could not find section for ${label}`);
+  }
+
+  return within(section).getByRole("button", { name: /all$/i });
 }
 
 describe("FilesTab row actions", () => {
@@ -80,30 +107,71 @@ describe("FilesTab row actions", () => {
     vi.clearAllMocks();
   });
 
-  it("shows stage and unstage buttons per file status", () => {
+  it("shows row actions and header bulk actions per status", () => {
     const onStageFile = vi.fn();
     const onUnstageFile = vi.fn();
-    renderFilesTab({ onStageFile, onUnstageFile });
+    const onStageFiles = vi.fn();
+    const onUnstageFiles = vi.fn();
+    renderFilesTab({ onStageFile, onUnstageFile, onStageFiles, onUnstageFiles });
 
-    const stageButtons = screen.getAllByRole("button", { name: /^stage\s/i });
+    const stageButtons = screen.getAllByRole("button", { name: /^stage\ssrc\//i });
     expect(stageButtons).toHaveLength(2);
-    const unstageButton = screen.getByRole("button", { name: /^unstage\s/i });
+    const unstageButton = screen.getByRole("button", { name: /^unstage\ssrc\//i });
+
+    const stagedBulkAction = getGroupAction("staged");
+    const unstagedBulkAction = getGroupAction("unstaged");
+    const untrackedBulkAction = getGroupAction("untracked");
+
+    expect(stagedBulkAction).toHaveTextContent("unstage all");
+    expect(unstagedBulkAction).toHaveTextContent("stage all");
+    expect(untrackedBulkAction).toHaveTextContent("stage all");
 
     fireEvent.click(stageButtons[0]);
     expect(onStageFile).toHaveBeenCalledWith("src/first.ts");
 
     fireEvent.click(unstageButton);
     expect(onUnstageFile).toHaveBeenCalledWith("src/already-staged.ts");
+
+    fireEvent.click(stagedBulkAction);
+    expect(onUnstageFiles).toHaveBeenCalledWith(["src/already-staged.ts"]);
+
+    fireEvent.click(unstagedBulkAction);
+    expect(onStageFiles).toHaveBeenCalledWith(["src/first.ts"]);
+
+    fireEvent.click(untrackedBulkAction);
+    expect(onStageFiles).toHaveBeenCalledWith(["src/second.ts"]);
   });
 
-  it("disables stage and unstage buttons while file mutation is pending", () => {
-    renderFilesTab({ isMutatingFile: true });
+  it("disables only rows for pending file paths", () => {
+    renderFilesTab({ pendingMutationsByPath: new Map([["src/first.ts", "stage"]]) });
 
-    const stageButtons = screen.getAllByRole("button", { name: /^stage\s/i });
-    const unstageButton = screen.getByRole("button", { name: /^unstage\s/i });
-    expect(stageButtons).toHaveLength(2);
-    expect(stageButtons[0]).toBeDisabled();
-    expect(stageButtons[1]).toBeDisabled();
-    expect(unstageButton).toBeDisabled();
+    const pendingButton = screen.getByRole("button", { name: "stage src/first.ts" });
+    const otherStageButton = screen.getByRole("button", { name: "stage src/second.ts" });
+    const unstageButton = screen.getByRole("button", { name: "unstage src/already-staged.ts" });
+
+    expect(pendingButton).toBeDisabled();
+    expect(pendingButton).toHaveTextContent("staging...");
+    expect(otherStageButton).toBeEnabled();
+    expect(unstageButton).toBeEnabled();
+
+    const unstagedBulkAction = getGroupAction("unstaged");
+    const untrackedBulkAction = getGroupAction("untracked");
+
+    expect(unstagedBulkAction).toBeDisabled();
+    expect(untrackedBulkAction).toBeEnabled();
+  });
+
+  it("shows a one-line commit dock and submits trimmed message", () => {
+    const onCommitChanges = vi.fn();
+
+    renderFilesTab({ onCommitChanges, stagedCount: 1 });
+
+    const input = screen.getByPlaceholderText("describe why this change exists");
+    expect(input).toHaveAttribute("rows", "2");
+
+    fireEvent.change(input, { target: { value: "  tidy files tab flow  " } });
+    fireEvent.click(screen.getByRole("button", { name: "commit" }));
+
+    expect(onCommitChanges).toHaveBeenCalledWith("tidy files tab flow");
   });
 });

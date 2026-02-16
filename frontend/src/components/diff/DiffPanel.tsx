@@ -18,6 +18,7 @@ import { PierreDiffRenderer } from "./PierreDiffRenderer";
 type DiffPanelProps = {
   selectedFile: ChangedFile | null;
   scope: DiffScope | null;
+  fileChangeCountLabel: string;
   viewMode: DiffViewMode;
   onViewModeChange: (mode: DiffViewMode) => void;
   onPreviousFile: () => void;
@@ -37,6 +38,7 @@ function toPierreFile(name: string, response: FileContentsResponse): PierreFileC
 export function DiffPanel({
   selectedFile,
   scope,
+  fileChangeCountLabel,
   viewMode,
   onViewModeChange,
   onPreviousFile,
@@ -87,17 +89,16 @@ export function DiffPanel({
     newFileQuery.data?.isBinary === true ||
     newFileQuery.data?.tooLarge === true;
 
+  const isLoadingFullContext =
+    canLoadContents &&
+    !fullFiles &&
+    !fullContextUnavailable &&
+    (oldFileQuery.isPending || newFileQuery.isPending || oldFileQuery.isFetching || newFileQuery.isFetching);
+
   if (!selectedFile) {
     return (
       <section className="diff-panel">
-        <DiffToolbar
-          viewMode={viewMode}
-          onViewModeChange={onViewModeChange}
-          onPreviousFile={onPreviousFile}
-          onNextFile={onNextFile}
-          canGoPrevious={canGoPrevious}
-          canGoNext={canGoNext}
-        />
+        <DiffToolbar viewMode={viewMode} onViewModeChange={onViewModeChange} />
         <div className="diff-content">
           <p className="empty-state">Select a file in the sidebar to view its diff.</p>
         </div>
@@ -131,12 +132,12 @@ export function DiffPanel({
         />
       </>
     );
+  } else if (isLoadingFullContext) {
+    content = <p className="inline-note">Loading full diff...</p>;
   } else {
     let fallbackNote: ReactNode = null;
 
-    if (oldFileQuery.isPending || newFileQuery.isPending || oldFileQuery.isFetching || newFileQuery.isFetching) {
-      fallbackNote = <p className="inline-note">Loading full file context...</p>;
-    } else if (oldFileQuery.isError || newFileQuery.isError) {
+    if (oldFileQuery.isError || newFileQuery.isError) {
       const fullContextError = oldFileQuery.isError
         ? toUiError(oldFileQuery.error)
         : newFileQuery.isError
@@ -165,20 +166,18 @@ export function DiffPanel({
 
   return (
     <section className="diff-panel">
-      <DiffToolbar
-        viewMode={viewMode}
-        onViewModeChange={onViewModeChange}
-        onPreviousFile={onPreviousFile}
-        onNextFile={onNextFile}
-        canGoPrevious={canGoPrevious}
-        canGoNext={canGoNext}
-      />
+      <DiffToolbar viewMode={viewMode} onViewModeChange={onViewModeChange} />
 
       {diffFile ? (
         <DiffFileHeader
           path={diffFile.path}
           oldPath={diffFile.oldPath}
           newPath={diffFile.newPath}
+          fileChangeCountLabel={fileChangeCountLabel}
+          onPreviousFile={onPreviousFile}
+          onNextFile={onNextFile}
+          canGoPrevious={canGoPrevious}
+          canGoNext={canGoNext}
           additions={diffFile.stats.additions}
           deletions={diffFile.stats.deletions}
         />

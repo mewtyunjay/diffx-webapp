@@ -88,6 +88,8 @@ export type ApiErrorCode =
   | "INVALID_SIDE"
   | "INVALID_PATH"
   | "INVALID_COMMIT_MESSAGE"
+  | "INVALID_PUSH_REQUEST"
+  | "NO_UPSTREAM"
   | "GIT_COMMAND_FAILED"
   | "INTERNAL_ERROR";
 
@@ -100,8 +102,10 @@ export type ApiError = {
 export type HealthResponse = { ok: boolean };
 
 export type StageFileRequest = { path: string };
+export type StageManyRequest = { paths: string[] };
 export type UnstageFileRequest = { path: string };
 export type CommitRequest = { message: string };
+export type PushRequest = { createUpstream?: boolean };
 
 export type ActionResponse = {
   ok: boolean;

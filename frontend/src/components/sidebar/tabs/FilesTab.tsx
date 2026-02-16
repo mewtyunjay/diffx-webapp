@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { ChangedFile, ChangedFileStatus, DiffScope } from "@diffx/contracts";
 import { useQueries } from "@tanstack/react-query";
 import { getDiffSummary } from "../../../services/api/diff";
@@ -11,7 +11,12 @@ type FilesTabProps = {
   onSelectFile: (file: ChangedFile) => void;
   onStageFile: (path: string) => void;
   onUnstageFile: (path: string) => void;
-  isMutatingFile: boolean;
+  onStageFiles: (paths: string[]) => void;
+  onUnstageFiles: (paths: string[]) => void;
+  pendingMutationsByPath: ReadonlyMap<string, "stage" | "unstage">;
+  stagedCount: number;
+  isCommitting: boolean;
+  onCommitChanges: (message: string) => void;
 };
 
 const STATUS_ORDER: ChangedFileStatus[] = ["staged", "unstaged", "untracked"];
@@ -113,8 +118,15 @@ export function FilesTab({
   onSelectFile,
   onStageFile,
   onUnstageFile,
-  isMutatingFile,
+  onStageFiles,
+  onUnstageFiles,
+  pendingMutationsByPath,
+  stagedCount,
+  isCommitting,
+  onCommitChanges,
 }: FilesTabProps) {
+  const [commitMessage, setCommitMessage] = useState("");
+
   const diffQueries = useQueries({
     queries: files.map((file) => {
       const scope = toDiffScope(file.status);
@@ -153,65 +165,125 @@ export function FilesTab({
 
   const displayPathByFile = useMemo(() => buildDisplayPathMap(files), [files]);
 
-  if (files.length === 0) {
-    return <p className="empty-state">No changed files.</p>;
-  }
+  const trimmedCommitMessage = commitMessage.trim();
+  const canCommit = trimmedCommitMessage.length > 0 && stagedCount > 0 && !isCommitting;
 
   return (
     <div className="files-tab">
-      {STATUS_ORDER.map((status) => {
-        const entries = files.filter((file) => file.status === status);
-        if (entries.length === 0) return null;
+      <div className="files-list-scroll">
+        {files.length === 0 ? <p className="empty-state">No changed files.</p> : null}
 
-        return (
-          <section key={status} className="file-group">
-            <p className="hud-label">
-              {statusLabel(status)} ({entries.length})
-            </p>
+        {STATUS_ORDER.map((status) => {
+          const entries = files.filter((file) => file.status === status);
+          if (entries.length === 0) return null;
 
-            <ul className="file-list">
-              {entries.map((file) => {
-                const active =
-                  selectedFile?.path === file.path && selectedFile.status === file.status;
-                const stats = statsByFile.get(fileKey(file));
-                const isStaged = file.status === "staged";
-                const actionLabel = isStaged ? "unstage" : "stage";
+          const groupAction = status === "staged" ? "unstage" : "stage";
+          const actionablePaths = entries
+            .map((file) => file.path)
+            .filter((path, index, source) => source.indexOf(path) === index)
+            .filter((path) => !pendingMutationsByPath.has(path));
 
-                return (
-                  <li key={`${file.status}:${file.path}`} className={active ? "file-row file-row-active" : "file-row"}>
-                    <button
-                      type="button"
-                      className="file-row-main"
-                      onClick={() => onSelectFile(file)}
-                      title={file.path}
-                    >
-                      <DiffStatBadge additions={stats?.additions ?? null} deletions={stats?.deletions ?? null} />
-                      <span className="file-row-name">{displayPathByFile.get(fileKey(file)) ?? file.path}</span>
-                    </button>
+          return (
+            <section key={status} className="file-group">
+              <div className="file-group-header">
+                <p className="hud-label">
+                  {statusLabel(status)} ({entries.length})
+                </p>
 
-                    <button
-                      type="button"
-                      className="file-row-action"
-                      aria-label={`${actionLabel} ${file.path}`}
-                      disabled={isMutatingFile}
-                      onClick={() => {
-                        if (isStaged) {
-                          onUnstageFile(file.path);
-                          return;
-                        }
+                <button
+                  type="button"
+                  className="file-group-action"
+                  disabled={actionablePaths.length === 0}
+                  onClick={() => {
+                    if (groupAction === "stage") {
+                      onStageFiles(actionablePaths);
+                      return;
+                    }
 
-                        onStageFile(file.path);
-                      }}
-                    >
-                      {actionLabel}
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          </section>
-        );
-      })}
+                    onUnstageFiles(actionablePaths);
+                  }}
+                >
+                  {groupAction} all
+                </button>
+              </div>
+
+              <ul className="file-list">
+                {entries.map((file) => {
+                  const active =
+                    selectedFile?.path === file.path && selectedFile.status === file.status;
+                  const stats = statsByFile.get(fileKey(file));
+                  const isStaged = file.status === "staged";
+                  const pendingMutation = pendingMutationsByPath.get(file.path);
+                  const actionLabel = pendingMutation
+                    ? pendingMutation === "stage"
+                      ? "staging..."
+                      : "unstaging..."
+                    : isStaged
+                      ? "-"
+                      : "+";
+
+                  return (
+                    <li key={`${file.status}:${file.path}`} className={active ? "file-row file-row-active" : "file-row"}>
+                      <button
+                        type="button"
+                        className="file-row-main"
+                        onClick={() => onSelectFile(file)}
+                        title={file.path}
+                      >
+                        <DiffStatBadge additions={stats?.additions ?? null} deletions={stats?.deletions ?? null} />
+                        <span className="file-row-name">{displayPathByFile.get(fileKey(file)) ?? file.path}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        className="file-row-action"
+                        aria-label={`${pendingMutation ?? (isStaged ? "unstage" : "stage")} ${file.path}`}
+                        disabled={Boolean(pendingMutation)}
+                        onClick={() => {
+                          if (isStaged) {
+                            onUnstageFile(file.path);
+                            return;
+                          }
+
+                          onStageFile(file.path);
+                        }}
+                      >
+                        {actionLabel}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          );
+        })}
+      </div>
+
+      <div className="files-commit-dock">
+        <p className="hud-label">commit message</p>
+
+        <div className="files-commit-entry">
+          <textarea
+            className="files-commit-input"
+            rows={2}
+            value={commitMessage}
+            onChange={(event) => setCommitMessage(event.target.value)}
+            placeholder="describe why this change exists"
+          />
+
+          <button
+            className="hud-button"
+            type="button"
+            disabled={!canCommit}
+            onClick={() => {
+              onCommitChanges(trimmedCommitMessage);
+              setCommitMessage("");
+            }}
+          >
+            {isCommitting ? "committing..." : "commit"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

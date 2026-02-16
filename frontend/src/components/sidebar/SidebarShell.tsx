@@ -10,12 +10,14 @@ type SidebarShellProps = {
   selectedFile: ChangedFile | null;
   isLoadingFiles: boolean;
   filesError: string | null;
-  isMutatingFile: boolean;
+  pendingMutationsByPath: ReadonlyMap<string, "stage" | "unstage">;
+  stagedCount: number;
   isCommitting: boolean;
-  feedback: string | null;
   onSelectFile: (file: ChangedFile) => void;
   onStageFile: (path: string) => void;
   onUnstageFile: (path: string) => void;
+  onStageFiles: (paths: string[]) => void;
+  onUnstageFiles: (paths: string[]) => void;
   onCommitChanges: (message: string) => void;
 };
 
@@ -26,12 +28,14 @@ export function SidebarShell({
   selectedFile,
   isLoadingFiles,
   filesError,
-  isMutatingFile,
+  pendingMutationsByPath,
+  stagedCount,
   isCommitting,
-  feedback,
   onSelectFile,
   onStageFile,
   onUnstageFile,
+  onStageFiles,
+  onUnstageFiles,
   onCommitChanges,
 }: SidebarShellProps) {
   return (
@@ -63,20 +67,17 @@ export function SidebarShell({
                 onSelectFile={onSelectFile}
                 onStageFile={onStageFile}
                 onUnstageFile={onUnstageFile}
-                isMutatingFile={isMutatingFile}
+                onStageFiles={onStageFiles}
+                onUnstageFiles={onUnstageFiles}
+                pendingMutationsByPath={pendingMutationsByPath}
+                stagedCount={stagedCount}
+                isCommitting={isCommitting}
+                onCommitChanges={onCommitChanges}
               />
             ) : null}
           </>
         ) : (
-          <ActionsTab
-            selectedFile={selectedFile}
-            isMutatingFile={isMutatingFile}
-            isCommitting={isCommitting}
-            feedback={feedback}
-            onStageFile={onStageFile}
-            onUnstageFile={onUnstageFile}
-            onCommitChanges={onCommitChanges}
-          />
+          <ActionsTab />
         )}
       </div>
     </aside>

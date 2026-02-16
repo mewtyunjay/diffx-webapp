@@ -1,10 +1,10 @@
 import React from "react";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ActionResponse } from "@diffx/contracts";
 import App from "./App";
-import { commitChanges, stageFile, unstageFile } from "./services/api/actions";
+import { commitChanges, stageFile, stageManyFiles, unstageFile } from "./services/api/actions";
 import { getDiffSummary } from "./services/api/diff";
 import { getLazyFileContents } from "./services/api/file-contents";
 import { getChangedFiles } from "./services/api/files";
@@ -33,6 +33,7 @@ vi.mock("./services/api/health", () => ({
 
 vi.mock("./services/api/actions", () => ({
   stageFile: vi.fn(),
+  stageManyFiles: vi.fn(),
   unstageFile: vi.fn(),
   commitChanges: vi.fn(),
 }));
@@ -56,12 +57,14 @@ describe("App", () => {
   const getLazyFileContentsMock = vi.mocked(getLazyFileContents);
   const getHealthMock = vi.mocked(getHealth);
   const stageFileMock = vi.mocked(stageFile);
+  const stageManyFilesMock = vi.mocked(stageManyFiles);
   const unstageFileMock = vi.mocked(unstageFile);
   const commitChangesMock = vi.mocked(commitChanges);
 
   beforeEach(() => {
     vi.resetAllMocks();
     stageFileMock.mockResolvedValue({ ok: true, message: "Staged file" });
+    stageManyFilesMock.mockResolvedValue({ ok: true, message: "Staged files" });
     unstageFileMock.mockResolvedValue({ ok: true, message: "Unstaged file" });
     commitChangesMock.mockResolvedValue({ ok: true, message: "Committed" });
   });
@@ -233,9 +236,122 @@ describe("App", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "unstage backend/src/app.ts" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "stage backend/src/app.ts" })).toHaveTextContent("staging...");
     });
 
     deferred.resolve({ ok: true, message: "Staged backend/src/app.ts" });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "unstage backend/src/app.ts" })).toBeInTheDocument();
+    });
+  });
+
+  it("uses stage-many endpoint for header stage all action", async () => {
+    getRepoSummaryMock.mockResolvedValue({
+      mode: "git",
+      repoName: "diffx-webapp",
+      branch: "main",
+      stagedCount: 0,
+      unstagedCount: 2,
+      untrackedCount: 0,
+    });
+
+    getChangedFilesMock.mockResolvedValue([
+      { path: "backend/src/app.ts", status: "unstaged" },
+      { path: "backend/src/server.ts", status: "unstaged" },
+    ]);
+
+    getDiffSummaryMock.mockResolvedValue({
+      mode: "git",
+      file: {
+        path: "backend/src/app.ts",
+        oldPath: "backend/src/app.ts",
+        newPath: "backend/src/app.ts",
+        languageHint: "ts",
+        isBinary: false,
+        tooLarge: false,
+        patch: null,
+        stats: {
+          additions: 0,
+          deletions: 0,
+          hunks: 0,
+        },
+      },
+    });
+
+    getHealthMock.mockResolvedValue({ ok: true });
+    getLazyFileContentsMock.mockResolvedValue({
+      mode: "git",
+      side: "old",
+      file: null,
+      isBinary: false,
+      tooLarge: false,
+      languageHint: "ts",
+    });
+
+    renderWithQueryClient();
+
+    const unstagedHeader = await screen.findByText("unstaged (2)");
+    const section = unstagedHeader.closest("section");
+    expect(section).not.toBeNull();
+
+    fireEvent.click(within(section!).getByRole("button", { name: "stage all" }));
+
+    await waitFor(() => {
+      expect(stageManyFilesMock).toHaveBeenCalledWith({
+        paths: ["backend/src/app.ts", "backend/src/server.ts"],
+      });
+    });
+
+    expect(stageFileMock).not.toHaveBeenCalled();
+  });
+
+  it("submits commit from files tab dock", async () => {
+    getRepoSummaryMock.mockResolvedValue({
+      mode: "git",
+      repoName: "diffx-webapp",
+      branch: "main",
+      stagedCount: 1,
+      unstagedCount: 0,
+      untrackedCount: 0,
+    });
+
+    getChangedFilesMock.mockResolvedValue([{ path: "frontend/src/App.tsx", status: "staged" }]);
+
+    getDiffSummaryMock.mockResolvedValue({
+      mode: "git",
+      file: {
+        path: "frontend/src/App.tsx",
+        oldPath: "frontend/src/App.tsx",
+        newPath: "frontend/src/App.tsx",
+        languageHint: "tsx",
+        isBinary: false,
+        tooLarge: false,
+        patch: "",
+        stats: { additions: 0, deletions: 0, hunks: 0 },
+      },
+    });
+
+    getHealthMock.mockResolvedValue({ ok: true });
+    getLazyFileContentsMock.mockResolvedValue({
+      mode: "git",
+      side: "old",
+      file: { name: "frontend/src/App.tsx", contents: "" },
+      isBinary: false,
+      tooLarge: false,
+      languageHint: "tsx",
+    });
+
+    renderWithQueryClient();
+
+    const messageBox = await screen.findByPlaceholderText("describe why this change exists");
+    fireEvent.change(messageBox, { target: { value: "ship files dock" } });
+
+    const commitButton = screen.getByRole("button", { name: "commit" });
+    fireEvent.click(commitButton);
+
+    await waitFor(() => {
+      expect(commitChangesMock).toHaveBeenCalledWith({ message: "ship files dock" });
+    });
   });
 });
