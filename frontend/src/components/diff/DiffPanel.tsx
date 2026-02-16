@@ -9,6 +9,7 @@ import type {
 } from "@diffx/contracts";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { getLazyFileContents } from "../../services/api/file-contents";
+import { toUiError } from "../../services/api/error-ui";
 import { queryKeys } from "../../services/query-keys";
 import { DiffFileHeader } from "./DiffFileHeader";
 import { DiffToolbar } from "./DiffToolbar";
@@ -54,8 +55,8 @@ export function DiffPanel({
       selectedFile && scope
         ? queryKeys.fileContents(selectedFile.path, scope, "old")
         : ["fileContents", "old", "none"],
-    queryFn: async () =>
-      await getLazyFileContents({ path: selectedFile!.path, scope: scope!, side: "old" }),
+    queryFn: async ({ signal }) =>
+      await getLazyFileContents({ path: selectedFile!.path, scope: scope!, side: "old" }, { signal }),
     enabled: canLoadContents,
   });
 
@@ -64,8 +65,8 @@ export function DiffPanel({
       selectedFile && scope
         ? queryKeys.fileContents(selectedFile.path, scope, "new")
         : ["fileContents", "new", "none"],
-    queryFn: async () =>
-      await getLazyFileContents({ path: selectedFile!.path, scope: scope!, side: "new" }),
+    queryFn: async ({ signal }) =>
+      await getLazyFileContents({ path: selectedFile!.path, scope: scope!, side: "new" }, { signal }),
     enabled: canLoadContents,
   });
 
@@ -90,7 +91,6 @@ export function DiffPanel({
     return (
       <section className="diff-panel">
         <DiffToolbar
-          selectedPath={null}
           viewMode={viewMode}
           onViewModeChange={onViewModeChange}
           onPreviousFile={onPreviousFile}
@@ -106,11 +106,12 @@ export function DiffPanel({
   }
 
   let content: ReactNode;
+  const diffError = diffQuery.isError ? toUiError(diffQuery.error) : null;
 
   if (diffQuery.isPending) {
     content = <p className="inline-note">Loading diff...</p>;
   } else if (diffQuery.isError) {
-    content = <p className="error-note">Unable to load diff for selected file.</p>;
+    content = <p className="error-note">{diffError?.message ?? "Unable to load diff for selected file."}</p>;
   } else if (!diffFile) {
     content = <p className="empty-state">No diff available for this selection.</p>;
   } else if (diffFile.isBinary) {
@@ -136,8 +137,17 @@ export function DiffPanel({
     if (oldFileQuery.isPending || newFileQuery.isPending || oldFileQuery.isFetching || newFileQuery.isFetching) {
       fallbackNote = <p className="inline-note">Loading full file context...</p>;
     } else if (oldFileQuery.isError || newFileQuery.isError) {
+      const fullContextError = oldFileQuery.isError
+        ? toUiError(oldFileQuery.error)
+        : newFileQuery.isError
+          ? toUiError(newFileQuery.error)
+          : null;
       fallbackNote = (
-        <p className="inline-note">Unable to load full context, showing patch-only view.</p>
+        <p className="inline-note">
+          {(fullContextError?.retryable ?? true)
+            ? `${fullContextError?.message ?? "Unable to load full context."} Showing patch-only view for now.`
+            : `${fullContextError?.message ?? "Full context unavailable."} Showing patch-only view.`}
+        </p>
       );
     } else if (fullContextUnavailable) {
       fallbackNote = (
@@ -156,7 +166,6 @@ export function DiffPanel({
   return (
     <section className="diff-panel">
       <DiffToolbar
-        selectedPath={selectedFile?.path ?? null}
         viewMode={viewMode}
         onViewModeChange={onViewModeChange}
         onPreviousFile={onPreviousFile}

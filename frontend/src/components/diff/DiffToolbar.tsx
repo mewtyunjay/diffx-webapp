@@ -1,7 +1,6 @@
 import type { DiffViewMode } from "@diffx/contracts";
 
 type DiffToolbarProps = {
-  selectedPath: string | null;
   viewMode: DiffViewMode;
   onViewModeChange: (mode: DiffViewMode) => void;
   onPreviousFile: () => void;
@@ -11,7 +10,6 @@ type DiffToolbarProps = {
 };
 
 export function DiffToolbar({
-  selectedPath,
   viewMode,
   onViewModeChange,
   onPreviousFile,
@@ -30,7 +28,7 @@ export function DiffToolbar({
         </button>
       </div>
 
-      <div className="diff-toolbar-path">{selectedPath ?? "select a file to inspect"}</div>
+      <div className="diff-toolbar-spacer" />
 
       <div className="diff-toolbar-group diff-mode-switch">
         <button

@@ -17,7 +17,22 @@ describe("getHealth", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(getHealth()).resolves.toEqual({ ok: true });
-    expect(fetchMock).toHaveBeenCalledWith("/api/health", undefined);
+    expect(fetchMock).toHaveBeenCalledWith("/api/health", { signal: undefined });
+  });
+
+  it("forwards abort signal to fetch", async () => {
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const controller = new AbortController();
+    await expect(getHealth({ signal: controller.signal })).resolves.toEqual({ ok: true });
+    expect(fetchMock).toHaveBeenCalledWith("/api/health", { signal: controller.signal });
   });
 
   it("throws a descriptive error when API responds with failure status", async () => {

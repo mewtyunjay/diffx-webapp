@@ -74,10 +74,10 @@
   height: 5.4rem;
   border-bottom: 0.5px solid var(--color-line);
   background: var(--color-bg-panel);
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  display: flex;
   align-items: center;
-  gap: 1rem;
+  justify-content: space-between;
+  gap: 0.8rem;
   padding: 0 1.4rem;
 }
 
@@ -87,16 +87,12 @@
   gap: 0.6rem;
 }
 
-.diff-toolbar-path {
-  color: var(--color-text-dim);
-  font-size: 1.15rem;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.diff-mode-switch {
+  justify-content: flex-end;
 }
 
-.diff-mode-switch {
-  justify-self: end;
+.diff-toolbar-spacer {
+  flex: 1;
 }
 
 .diff-file-header {
@@ -122,7 +118,7 @@
   align-items: center;
   justify-content: center;
   min-width: 3.2rem;
-  padding: 0.25rem 0.5rem;
+  padding: 0.3rem 0.5rem;
   border: 0.5px solid var(--color-border);
   background: rgba(122, 155, 168, 0.08);
   color: var(--color-text-bright);
@@ -143,12 +139,13 @@
 .diff-file-stats {
   display: inline-flex;
   align-items: center;
-  gap: 0.8rem;
-  border: 0.5px solid var(--color-border);
-  background: rgba(122, 155, 168, 0.04);
-  padding: 0.25rem 0.6rem;
-  font-size: 1.1rem;
-  letter-spacing: 0.1em;
+  gap: 0.24rem;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font-size: 1.32rem;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
   flex-shrink: 0;
 }
 
@@ -327,12 +324,10 @@
   border-left: 2px solid transparent;
   background: transparent;
   color: var(--color-text);
-  text-align: left;
-  padding: 0.7rem 0.9rem;
-  cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 0.8rem;
+  gap: 0.5rem;
+  padding: 0.38rem 0.62rem;
 }
 
 .file-row:hover {
@@ -355,24 +350,87 @@
   font-size: 1.32rem;
 }
 
+.file-row-main {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.file-row-main:focus-visible {
+  outline: 1px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.file-row-action {
+  border: 0.5px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text);
+  padding: 0.24rem 0.5rem;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.file-row-action:hover:not(:disabled) {
+  background: rgba(122, 155, 168, 0.12);
+  color: var(--color-text-bright);
+}
+
+.file-row-action:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.file-row-state {
+  border: 0.5px solid var(--color-border);
+  color: var(--color-text-dim);
+  padding: 0.22rem 0.46rem;
+  font-size: 0.84rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  flex-shrink: 0;
+}
+
 .file-row-stats {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
+  justify-content: center;
+  width: 8.8ch;
   border: 0.5px solid var(--color-border);
   background: rgba(122, 155, 168, 0.06);
-  padding: 0.3rem 0.5rem;
-  font-size: 1rem;
-  letter-spacing: 0.08em;
+  padding: 0.24rem 0.24rem;
   flex-shrink: 0;
+}
+
+.file-row-stats-inner {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  width: 100%;
+  font-size: 0.94rem;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
 }
 
 .file-row-stat-add {
   color: var(--color-success);
+  white-space: nowrap;
+  justify-self: center;
 }
 
 .file-row-stat-del {
   color: var(--color-error);
+  white-space: nowrap;
+  justify-self: center;
 }
 
 .commit-box {
@@ -403,7 +461,8 @@
 .statusbar {
   display: flex;
   align-items: center;
-  gap: 1.2rem;
+  justify-content: space-between;
+  gap: 1rem;
   border-top: 0.5px solid var(--color-line);
   background: var(--color-bg-panel);
   padding: 0 1.2rem;
@@ -411,17 +470,22 @@
   color: var(--color-text-dim);
 }
 
+.statusbar-left,
+.statusbar-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.statusbar-right {
+  margin-left: auto;
+}
+
 .status-item {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-}
-
-.status-path {
-  min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .status-dot {
@@ -496,21 +560,8 @@
   }
 
   .diff-toolbar {
-    grid-template-columns: auto minmax(0, 1fr);
-    grid-template-rows: auto auto;
     height: auto;
     padding: 0.8rem 1.2rem;
-  }
-
-  .diff-mode-switch {
-    grid-column: 2;
-    grid-row: 1;
-    justify-self: end;
-  }
-
-  .diff-toolbar-path {
-    grid-column: 1 / span 2;
-    grid-row: 2;
   }
 
   .diff-file-header {

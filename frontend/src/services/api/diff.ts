@@ -1,6 +1,10 @@
 import type { DiffQuery, DiffSummaryResponse } from "@diffx/contracts";
 import { fetchJson } from "./client";
 
+type RequestOptions = {
+  signal?: AbortSignal;
+};
+
 function toDiffQueryString(query: DiffQuery): string {
   const params = new URLSearchParams();
   params.set("path", query.path);
@@ -13,7 +17,10 @@ function toDiffQueryString(query: DiffQuery): string {
   return params.toString();
 }
 
-export async function getDiffSummary(query: DiffQuery): Promise<DiffSummaryResponse> {
+export async function getDiffSummary(
+  query: DiffQuery,
+  options?: RequestOptions,
+): Promise<DiffSummaryResponse> {
   const qs = toDiffQueryString(query);
-  return await fetchJson<DiffSummaryResponse>(`/api/diff?${qs}`);
+  return await fetchJson<DiffSummaryResponse>(`/api/diff?${qs}`, { signal: options?.signal });
 }

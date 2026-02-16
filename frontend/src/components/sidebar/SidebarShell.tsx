@@ -57,7 +57,14 @@ export function SidebarShell({
             {isLoadingFiles ? <p className="inline-note">Loading files...</p> : null}
             {filesError ? <p className="error-note">{filesError}</p> : null}
             {!isLoadingFiles && !filesError ? (
-              <FilesTab files={files} selectedFile={selectedFile} onSelectFile={onSelectFile} />
+              <FilesTab
+                files={files}
+                selectedFile={selectedFile}
+                onSelectFile={onSelectFile}
+                onStageFile={onStageFile}
+                onUnstageFile={onUnstageFile}
+                isMutatingFile={isMutatingFile}
+              />
             ) : null}
           </>
         ) : (

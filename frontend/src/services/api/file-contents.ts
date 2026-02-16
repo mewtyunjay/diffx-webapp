@@ -1,6 +1,10 @@
 import type { FileContentsQuery, FileContentsResponse } from "@diffx/contracts";
 import { fetchJson } from "./client";
 
+type RequestOptions = {
+  signal?: AbortSignal;
+};
+
 function toFileContentsQueryString(query: FileContentsQuery): string {
   const params = new URLSearchParams();
   params.set("path", query.path);
@@ -11,7 +15,8 @@ function toFileContentsQueryString(query: FileContentsQuery): string {
 
 export async function getLazyFileContents(
   query: FileContentsQuery,
+  options?: RequestOptions,
 ): Promise<FileContentsResponse> {
   const qs = toFileContentsQueryString(query);
-  return await fetchJson<FileContentsResponse>(`/api/file-contents?${qs}`);
+  return await fetchJson<FileContentsResponse>(`/api/file-contents?${qs}`, { signal: options?.signal });
 }
