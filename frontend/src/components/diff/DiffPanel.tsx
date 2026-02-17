@@ -130,8 +130,8 @@ export function DiffPanel({
           onNextFile={onNextFile}
           canGoPrevious={canGoPrevious}
           canGoNext={canGoNext}
-          additions={diffFile.stats.additions}
-          deletions={diffFile.stats.deletions}
+          additions={selectedFile.stats?.additions ?? null}
+          deletions={selectedFile.stats?.deletions ?? null}
         />
       ) : null}
 

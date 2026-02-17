@@ -38,6 +38,19 @@ describe("POST /api/actions validation", () => {
     });
   });
 
+  it("rejects unstage-many request with invalid paths", async () => {
+    const app = createApp();
+
+    const response = await request(app)
+      .post("/api/actions/unstage-many")
+      .send({ paths: ["src/app.ts", "   "] });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject({
+      code: "INVALID_PATH",
+    });
+  });
+
   it("rejects push request with invalid createUpstream flag", async () => {
     const app = createApp();
 

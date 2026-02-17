@@ -15,10 +15,16 @@ export type RepoSummary = {
 
 export type ChangedFileStatus = "staged" | "unstaged" | "untracked";
 
+export type ChangedFileStats = {
+  additions: number | null;
+  deletions: number | null;
+};
+
 export type ChangedFile = {
   path: string;
   status: ChangedFileStatus;
   contentHash: string;
+  stats: ChangedFileStats | null;
 };
 
 export type BranchSummary = {
@@ -122,6 +128,7 @@ export type HealthResponse = { ok: boolean };
 export type StageFileRequest = { path: string };
 export type StageManyRequest = { paths: string[] };
 export type UnstageFileRequest = { path: string };
+export type UnstageManyRequest = { paths: string[] };
 export type CommitRequest = { message: string };
 export type PushRequest = { createUpstream?: boolean };
 

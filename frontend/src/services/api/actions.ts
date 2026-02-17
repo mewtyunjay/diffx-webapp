@@ -4,6 +4,7 @@ import type {
   PushRequest,
   StageManyRequest,
   StageFileRequest,
+  UnstageManyRequest,
   UnstageFileRequest,
 } from "@diffx/contracts";
 import { fetchJson } from "./client";
@@ -26,6 +27,14 @@ export async function stageManyFiles(body: StageManyRequest): Promise<ActionResp
 
 export async function unstageFile(body: UnstageFileRequest): Promise<ActionResponse> {
   return await fetchJson<ActionResponse>("/api/actions/unstage", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export async function unstageManyFiles(body: UnstageManyRequest): Promise<ActionResponse> {
+  return await fetchJson<ActionResponse>("/api/actions/unstage-many", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),

@@ -124,6 +124,52 @@ export async function unstageFile(requestedPath: string): Promise<ActionResponse
   });
 }
 
+export async function unstageManyFiles(requestedPaths: string[]): Promise<ActionResponse> {
+  const context = await requireGitContext();
+  const relativePaths = resolveUniqueRelativePaths(context.repoRoot, requestedPaths);
+
+  if (relativePaths.length === 0) {
+    throw new ApiRouteError(400, "INVALID_PATH", "At least one file path is required.");
+  }
+
+  return await withMutationQueue(async () => {
+    try {
+      await execGit([
+        "-C",
+        context.repoRoot,
+        "restore",
+        "--staged",
+        "--",
+        ...relativePaths,
+      ]);
+    } catch (error) {
+      if (!(error instanceof GitCommandError)) {
+        throw toGitApiError(error, "Unable to unstage files.", 409);
+      }
+
+      try {
+        await execGit([
+          "-C",
+          context.repoRoot,
+          "reset",
+          "HEAD",
+          "--",
+          ...relativePaths,
+        ]);
+      } catch (fallbackError) {
+        throw toGitApiError(fallbackError, "Unable to unstage files.", 409);
+      }
+    }
+
+    const fileLabel = relativePaths.length === 1 ? "file" : "files";
+
+    return {
+      ok: true,
+      message: `Unstaged ${relativePaths.length} ${fileLabel}.`,
+    };
+  });
+}
+
 export async function commitChanges(messageInput: string): Promise<ActionResponse> {
   const message = messageInput.trim();
 

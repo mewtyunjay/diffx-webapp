@@ -4,7 +4,14 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ActionResponse } from "@diffx/contracts";
 import App from "./App";
-import { commitChanges, pushChanges, stageFile, stageManyFiles, unstageFile } from "./services/api/actions";
+import {
+  commitChanges,
+  pushChanges,
+  stageFile,
+  stageManyFiles,
+  unstageFile,
+  unstageManyFiles,
+} from "./services/api/actions";
 import { ApiRequestError } from "./services/api/client";
 import { getDiffDetail, getDiffSummary } from "./services/api/diff";
 import { getChangedFiles } from "./services/api/files";
@@ -32,6 +39,7 @@ vi.mock("./services/api/actions", () => ({
   stageFile: vi.fn(),
   stageManyFiles: vi.fn(),
   unstageFile: vi.fn(),
+  unstageManyFiles: vi.fn(),
   commitChanges: vi.fn(),
   pushChanges: vi.fn(),
 }));
@@ -57,6 +65,7 @@ describe("App", () => {
   const stageFileMock = vi.mocked(stageFile);
   const stageManyFilesMock = vi.mocked(stageManyFiles);
   const unstageFileMock = vi.mocked(unstageFile);
+  const unstageManyFilesMock = vi.mocked(unstageManyFiles);
   const commitChangesMock = vi.mocked(commitChanges);
   const pushChangesMock = vi.mocked(pushChanges);
 
@@ -90,6 +99,7 @@ describe("App", () => {
     stageFileMock.mockResolvedValue({ ok: true, message: "Staged file" });
     stageManyFilesMock.mockResolvedValue({ ok: true, message: "Staged files" });
     unstageFileMock.mockResolvedValue({ ok: true, message: "Unstaged file" });
+    unstageManyFilesMock.mockResolvedValue({ ok: true, message: "Unstaged files" });
     commitChangesMock.mockResolvedValue({ ok: true, message: "Committed" });
     pushChangesMock.mockResolvedValue({ ok: true, message: "Pushed" });
 
@@ -212,6 +222,77 @@ describe("App", () => {
     expect(await screen.findByRole("tab", { name: "Files" })).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "app.ts" })).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "split" })).toBeInTheDocument();
+  });
+
+  it("uses files payload stats as header source of truth", async () => {
+    getRepoSummaryMock.mockResolvedValue(buildGitRepoSummary({ untrackedCount: 1 }));
+
+    getChangedFilesMock.mockResolvedValue([
+      {
+        path: "frontend/src/new-file.ts",
+        status: "untracked",
+        contentHash: "hash-new",
+        stats: { additions: 3, deletions: 0 },
+      },
+    ]);
+
+    getDiffDetailMock.mockResolvedValue({
+      mode: "git",
+      file: {
+        path: "frontend/src/new-file.ts",
+        oldPath: null,
+        newPath: "frontend/src/new-file.ts",
+        languageHint: "ts",
+        isBinary: false,
+        tooLarge: false,
+        patch: [
+          "diff --git a/frontend/src/new-file.ts b/frontend/src/new-file.ts",
+          "new file mode 100644",
+          "index 0000000..1111111",
+          "--- /dev/null",
+          "+++ b/frontend/src/new-file.ts",
+          "@@ -0,0 +1,3 @@",
+          "+line one",
+          "+line two",
+          "+line three",
+          "",
+        ].join("\n"),
+        stats: {
+          additions: 9,
+          deletions: 0,
+          hunks: 1,
+        },
+      },
+      old: {
+        file: null,
+        isBinary: false,
+        tooLarge: false,
+        error: false,
+      },
+      new: {
+        file: {
+          name: "frontend/src/new-file.ts",
+          contents: "line one\nline two\nline three\n",
+        },
+        isBinary: false,
+        tooLarge: false,
+        error: false,
+      },
+    });
+
+    getHealthMock.mockResolvedValue({ ok: true });
+
+    renderWithQueryClient();
+
+    const fileButton = await screen.findByRole("button", { name: "new-file.ts" });
+    const row = fileButton.closest("li");
+
+    expect(row).not.toBeNull();
+    expect(within(row!).getByText("+3")).toBeInTheDocument();
+
+    const fileHeader = await screen.findByRole("status", { name: "Current diff file metadata" });
+    expect(within(fileHeader).getByText("+3")).toBeInTheDocument();
+    expect(within(fileHeader).queryByText("+9")).not.toBeInTheDocument();
   });
 
   it("optimistically flips unstaged file to staged in files tab", async () => {
@@ -385,6 +466,35 @@ describe("App", () => {
     });
 
     expect(stageFileMock).not.toHaveBeenCalled();
+  });
+
+  it("uses unstage-many endpoint for header unstage all action", async () => {
+    getRepoSummaryMock.mockResolvedValue(
+      buildGitRepoSummary({ stagedCount: 2 }),
+    );
+
+    getChangedFilesMock.mockResolvedValue([
+      { path: "backend/src/app.ts", status: "staged", contentHash: "hash-app" },
+      { path: "backend/src/server.ts", status: "staged", contentHash: "hash-server" },
+    ]);
+
+    getHealthMock.mockResolvedValue({ ok: true });
+
+    renderWithQueryClient();
+
+    const stagedHeader = await screen.findByText("staged (2)");
+    const section = stagedHeader.closest("section");
+    expect(section).not.toBeNull();
+
+    fireEvent.click(within(section!).getByRole("button", { name: "unstage all" }));
+
+    await waitFor(() => {
+      expect(unstageManyFilesMock).toHaveBeenCalledWith({
+        paths: ["backend/src/app.ts", "backend/src/server.ts"],
+      });
+    });
+
+    expect(unstageFileMock).not.toHaveBeenCalled();
   });
 
   it("switches files dock action from commit to push after commit", async () => {

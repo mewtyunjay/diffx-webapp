@@ -1,27 +1,11 @@
 import React from "react";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { DiffSummaryResponse } from "@diffx/contracts";
-import { getDiffSummary } from "../../../services/api/diff";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ChangedFile } from "@diffx/contracts";
 import { FilesTab, type FilesDockMessage } from "./FilesTab";
 
-vi.mock("../../../services/api/diff", () => ({
-  getDiffSummary: vi.fn(),
-}));
-
-function buildQueryClient() {
-  return new QueryClient({
-    defaultOptions: {
-      queries: {
-        retry: false,
-        refetchOnWindowFocus: false,
-      },
-    },
-  });
-}
-
 function renderFilesTab(options?: {
+  files?: ChangedFile[];
   pendingMutationsByPath?: ReadonlyMap<string, "stage" | "unstage">;
   onStageFile?: (path: string) => void;
   onUnstageFile?: (path: string) => void;
@@ -42,31 +26,45 @@ function renderFilesTab(options?: {
   const onUnstageFiles = options?.onUnstageFiles ?? vi.fn();
   const onCommitChanges = options?.onCommitChanges ?? vi.fn();
   const onPushChanges = options?.onPushChanges ?? vi.fn();
+  const files = options?.files ?? [
+    {
+      path: "src/first.ts",
+      status: "unstaged",
+      contentHash: "hash-first",
+      stats: { additions: 2, deletions: 1 },
+    },
+    {
+      path: "src/second.ts",
+      status: "untracked",
+      contentHash: "hash-second",
+      stats: null,
+    },
+    {
+      path: "src/already-staged.ts",
+      status: "staged",
+      contentHash: "hash-staged",
+      stats: { additions: 1, deletions: 0 },
+    },
+  ];
 
   render(
-    <QueryClientProvider client={buildQueryClient()}>
-      <FilesTab
-        files={[
-          { path: "src/first.ts", status: "unstaged", contentHash: "hash-first" },
-          { path: "src/second.ts", status: "untracked", contentHash: "hash-second" },
-          { path: "src/already-staged.ts", status: "staged", contentHash: "hash-staged" },
-        ]}
-        selectedFile={null}
-        onSelectFile={onSelectFile}
-        onStageFile={onStageFile}
-        onUnstageFile={onUnstageFile}
-        onStageFiles={onStageFiles}
-        onUnstageFiles={onUnstageFiles}
-        pendingMutationsByPath={options?.pendingMutationsByPath ?? new Map()}
-        stagedCount={options?.stagedCount ?? 1}
-        dockAction={options?.dockAction ?? "commit"}
-        dockMessage={options?.dockMessage ?? null}
-        isCommitting={options?.isCommitting ?? false}
-        isPushing={options?.isPushing ?? false}
-        onCommitChanges={onCommitChanges}
-        onPushChanges={onPushChanges}
-      />
-    </QueryClientProvider>,
+    <FilesTab
+      files={files}
+      selectedFile={null}
+      onSelectFile={onSelectFile}
+      onStageFile={onStageFile}
+      onUnstageFile={onUnstageFile}
+      onStageFiles={onStageFiles}
+      onUnstageFiles={onUnstageFiles}
+      pendingMutationsByPath={options?.pendingMutationsByPath ?? new Map()}
+      stagedCount={options?.stagedCount ?? 1}
+      dockAction={options?.dockAction ?? "commit"}
+      dockMessage={options?.dockMessage ?? null}
+      isCommitting={options?.isCommitting ?? false}
+      isPushing={options?.isPushing ?? false}
+      onCommitChanges={onCommitChanges}
+      onPushChanges={onPushChanges}
+    />,
   );
 
   return {
@@ -92,26 +90,6 @@ function getGroupAction(label: "staged" | "unstaged" | "untracked"): HTMLButtonE
 }
 
 describe("FilesTab row actions", () => {
-  beforeEach(() => {
-    vi.resetAllMocks();
-
-    const diffResponse: DiffSummaryResponse = {
-      mode: "git",
-      file: {
-        path: "src/file.ts",
-        oldPath: "src/file.ts",
-        newPath: "src/file.ts",
-        languageHint: "ts",
-        isBinary: false,
-        tooLarge: false,
-        patch: null,
-        stats: { additions: 1, deletions: 1, hunks: 1 },
-      },
-    };
-
-    vi.mocked(getDiffSummary).mockResolvedValue(diffResponse);
-  });
-
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
@@ -169,6 +147,26 @@ describe("FilesTab row actions", () => {
 
     expect(unstagedBulkAction).toBeDisabled();
     expect(untrackedBulkAction).toBeEnabled();
+  });
+
+  it("renders untracked row stats when available", () => {
+    renderFilesTab({
+      files: [
+        {
+          path: "src/new-file.ts",
+          status: "untracked",
+          contentHash: "hash-new",
+          stats: { additions: 5, deletions: 0 },
+        },
+      ],
+    });
+
+    const fileButton = screen.getByRole("button", { name: "new-file.ts" });
+    const row = fileButton.closest("li");
+
+    expect(row).not.toBeNull();
+    expect(within(row!).getByText("+5")).toBeInTheDocument();
+    expect(within(row!).getByText("-0")).toBeInTheDocument();
   });
 
   it("shows a one-line commit dock and submits trimmed message", () => {

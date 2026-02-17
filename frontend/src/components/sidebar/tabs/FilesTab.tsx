@@ -1,8 +1,5 @@
 import { useMemo, useState } from "react";
-import type { ChangedFile, ChangedFileStatus, DiffScope, DiffSummaryResponse } from "@diffx/contracts";
-import { useQueries } from "@tanstack/react-query";
-import { getDiffSummary } from "../../../services/api/diff";
-import { queryKeys } from "../../../services/query-keys";
+import type { ChangedFile, ChangedFileStatus } from "@diffx/contracts";
 import { DiffStatBadge } from "./DiffStatBadge";
 
 export type FilesDockAction = "commit" | "push" | "create-upstream";
@@ -109,10 +106,6 @@ function buildDisplayPathMap(files: ChangedFile[]): Map<string, string> {
   return displayMap;
 }
 
-function toDiffScope(status: ChangedFileStatus): DiffScope {
-  return status === "staged" ? "staged" : "unstaged";
-}
-
 function fileKey(file: ChangedFile): string {
   return `${file.status}:${file.path}`;
 }
@@ -142,37 +135,14 @@ export function FilesTab({
 }: FilesTabProps) {
   const [commitMessage, setCommitMessage] = useState("");
 
-  const diffQueries = useQueries({
-    queries: files.map((file) => {
-      const scope = toDiffScope(file.status);
-      return {
-        queryKey: queryKeys.diff(file.path, scope, 3, file.contentHash),
-        queryFn: async ({ signal }) =>
-          await getDiffSummary(
-            {
-              path: file.path,
-              scope,
-              contextLines: 3,
-            },
-            { signal },
-          ),
-        staleTime: 15000,
-        placeholderData: (previousData: DiffSummaryResponse | undefined) => previousData,
-      };
-    }),
-  });
-
   const statsByFile = useMemo(() => {
-    const map = new Map<string, { additions: number; deletions: number } | null>();
+    const map = new Map<string, { additions: number | null; deletions: number | null } | null>();
 
-    files.forEach((file, index) => {
-      const query = diffQueries[index];
-      const diffFile = query.data?.file;
-
-      if (diffFile) {
+    files.forEach((file) => {
+      if (file.stats) {
         map.set(fileKey(file), {
-          additions: diffFile.stats.additions,
-          deletions: diffFile.stats.deletions,
+          additions: file.stats.additions,
+          deletions: file.stats.deletions,
         });
       } else {
         map.set(fileKey(file), null);
@@ -180,7 +150,7 @@ export function FilesTab({
     });
 
     return map;
-  }, [diffQueries, files]);
+  }, [files]);
 
   const displayPathByFile = useMemo(() => buildDisplayPathMap(files), [files]);
 

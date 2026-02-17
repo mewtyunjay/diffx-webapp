@@ -9,7 +9,14 @@ import type {
   RepoSummary,
 } from "@diffx/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { commitChanges, pushChanges, stageFile, stageManyFiles, unstageFile } from "../../services/api/actions";
+import {
+  commitChanges,
+  pushChanges,
+  stageFile,
+  stageManyFiles,
+  unstageFile,
+  unstageManyFiles,
+} from "../../services/api/actions";
 import { ApiRequestError } from "../../services/api/client";
 import { getDiffDetail } from "../../services/api/diff";
 import { toUiError } from "../../services/api/error-ui";
@@ -34,6 +41,10 @@ type FilesDockMessage = {
   tone: "info" | "error";
   text: string;
 } | null;
+type SelectedFileRef = {
+  path: string;
+  status: ChangedFileStatus;
+};
 
 const STATUS_PRIORITY: Record<ChangedFileStatus, number> = {
   staged: 0,
@@ -79,27 +90,40 @@ function syncRepoCounts(repo: RepoSummary, files: ChangedFile[]): RepoSummary {
   };
 }
 
+function getFileMeta(files: ChangedFile[], path: string): { contentHash: string; stats: ChangedFile["stats"] } {
+  const match = files.find((file) => file.path === path);
+
+  return {
+    contentHash: match?.contentHash ?? "none",
+    stats: match?.stats ?? null,
+  };
+}
+
 function applyStageTransition(files: ChangedFile[], path: string): ChangedFile[] {
-  const contentHash = files.find((file) => file.path === path)?.contentHash ?? "none";
+  const { contentHash, stats } = getFileMeta(files, path);
   const next = files.filter(
     (file) => !(file.path === path && (file.status === "unstaged" || file.status === "untracked")),
   );
 
-  next.push({ path, status: "staged", contentHash });
+  next.push({ path, status: "staged", contentHash, stats });
   return sortChangedFiles(dedupeChangedFiles(next));
 }
 
 function applyStageManyTransition(files: ChangedFile[], paths: string[]): ChangedFile[] {
   const pathSet = new Set(paths);
-  const contentHashByPath = new Map(
-    paths.map((path) => [path, files.find((file) => file.path === path)?.contentHash ?? "none"]),
-  );
+  const metaByPath = new Map(paths.map((path) => [path, getFileMeta(files, path)]));
   const next = files.filter(
     (file) => !(pathSet.has(file.path) && (file.status === "unstaged" || file.status === "untracked")),
   );
 
   for (const path of pathSet) {
-    next.push({ path, status: "staged", contentHash: contentHashByPath.get(path) ?? "none" });
+    const meta = metaByPath.get(path);
+    next.push({
+      path,
+      status: "staged",
+      contentHash: meta?.contentHash ?? "none",
+      stats: meta?.stats ?? null,
+    });
   }
 
   return sortChangedFiles(dedupeChangedFiles(next));
@@ -130,9 +154,25 @@ function applyUnstageTransition(
   path: string,
   targetStatus: ChangedFileStatus,
 ): ChangedFile[] {
-  const contentHash = files.find((file) => file.path === path)?.contentHash ?? "none";
+  const { contentHash, stats } = getFileMeta(files, path);
   const next = files.filter((file) => !(file.path === path && file.status === "staged"));
-  next.push({ path, status: targetStatus, contentHash });
+  next.push({ path, status: targetStatus, contentHash, stats });
+  return sortChangedFiles(dedupeChangedFiles(next));
+}
+
+function applyUnstageManyTransition(
+  files: ChangedFile[],
+  targetStatusByPath: Map<string, ChangedFileStatus>,
+): ChangedFile[] {
+  const next = files.filter(
+    (file) => !(targetStatusByPath.has(file.path) && file.status === "staged"),
+  );
+
+  for (const [path, status] of targetStatusByPath) {
+    const { contentHash, stats } = getFileMeta(files, path);
+    next.push({ path, status, contentHash, stats });
+  }
+
   return sortChangedFiles(dedupeChangedFiles(next));
 }
 
@@ -182,10 +222,17 @@ function toScope(file: ChangedFile | null): DiffScope | null {
   return file.status === "staged" ? "staged" : "unstaged";
 }
 
+function toSelectedFileRef(file: Pick<ChangedFile, "path" | "status">): SelectedFileRef {
+  return {
+    path: file.path,
+    status: file.status,
+  };
+}
+
 export function AppShell({ initialRepo }: AppShellProps) {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<SidebarTabId>("files");
-  const [selectedFile, setSelectedFile] = useState<ChangedFile | null>(null);
+  const [selectedFileRef, setSelectedFileRef] = useState<SelectedFileRef | null>(null);
   const [viewMode, setViewMode] = useState<DiffViewMode>("split");
   const [filesDockMode, setFilesDockMode] = useState<FilesDockMode>("idle");
   const [filesDockMessage, setFilesDockMessage] = useState<FilesDockMessage>(null);
@@ -277,29 +324,39 @@ export function AppShell({ initialRepo }: AppShellProps) {
 
   const files = filesQuery.data ?? [];
 
+  const selectedFile = useMemo(() => {
+    if (!selectedFileRef) {
+      return null;
+    }
+
+    return (
+      files.find(
+        (entry) => entry.path === selectedFileRef.path && entry.status === selectedFileRef.status,
+      ) ?? files.find((entry) => entry.path === selectedFileRef.path) ?? null
+    );
+  }, [files, selectedFileRef]);
+
   useEffect(() => {
-    if (!selectedFile) {
+    if (!selectedFileRef) {
       if (files.length > 0) {
-        setSelectedFile(files[0]);
+        setSelectedFileRef(toSelectedFileRef(files[0]));
       }
 
       return;
     }
 
     const exactMatch = files.find(
-      (entry) => entry.path === selectedFile.path && entry.status === selectedFile.status,
+      (entry) => entry.path === selectedFileRef.path && entry.status === selectedFileRef.status,
     );
 
     if (exactMatch) {
       return;
     }
 
-    const pathMatch = files.find((entry) => entry.path === selectedFile.path);
+    const pathMatch = files.find((entry) => entry.path === selectedFileRef.path);
 
     if (pathMatch) {
-      if (pathMatch.status !== selectedFile.status) {
-        setSelectedFile(pathMatch);
-      }
+      setSelectedFileRef(toSelectedFileRef(pathMatch));
 
       return;
     }
@@ -308,8 +365,8 @@ export function AppShell({ initialRepo }: AppShellProps) {
       return;
     }
 
-    setSelectedFile(files[0] ?? null);
-  }, [files, filesQuery.isFetching, selectedFile]);
+    setSelectedFileRef(files[0] ? toSelectedFileRef(files[0]) : null);
+  }, [files, filesQuery.isFetching, selectedFileRef]);
 
   const selectedScope = useMemo(() => toScope(selectedFile), [selectedFile]);
 
@@ -484,7 +541,9 @@ export function AppShell({ initialRepo }: AppShellProps) {
 
       if (selectedFile && selectedFile.path === path) {
         const matching = nextFiles.find((file) => file.path === path && file.status === "staged");
-        setSelectedFile(matching ?? selectedFile);
+        if (matching) {
+          setSelectedFileRef(toSelectedFileRef(matching));
+        }
       }
     },
     onSettled: (_result, _error, path) => {
@@ -527,7 +586,9 @@ export function AppShell({ initialRepo }: AppShellProps) {
 
       if (selectedFile && pathSet.has(selectedFile.path)) {
         const matching = nextFiles.find((file) => file.path === selectedFile.path && file.status === "staged");
-        setSelectedFile(matching ?? selectedFile);
+        if (matching) {
+          setSelectedFileRef(toSelectedFileRef(matching));
+        }
       }
     },
     onSettled: (_result, _error, paths) => {
@@ -565,18 +626,89 @@ export function AppShell({ initialRepo }: AppShellProps) {
       queryClient.removeQueries({ queryKey: queryKeys.diff(path, "staged", 3, contentHash), exact: true });
       clearFileMutationContents(path);
 
-      if (
-        selectedFile &&
-        selectedFile.path === path &&
-        selectedFile.status === "staged"
-      ) {
+      if (selectedFile && selectedFile.path === path && selectedFile.status === "staged") {
         const matching = nextFiles.find((file) => file.path === path && file.status !== "staged");
-        setSelectedFile(matching ?? null);
+        setSelectedFileRef(matching ? toSelectedFileRef(matching) : null);
       }
     },
     onSettled: (_result, _error, path) => {
       endPendingMutation(path);
       revalidateAfterFileMutation(path);
+    },
+  });
+
+  const unstageManyMutation = useMutation({
+    mutationFn: async (paths: string[]) => await unstageManyFiles({ paths }),
+    onMutate: async (paths) => {
+      const uniquePaths = [...new Set(paths)];
+      const pathSet = new Set(uniquePaths);
+      const contentHashByPath = getContentHashMap(uniquePaths);
+
+      await cancelFileMutationQueriesForPaths(uniquePaths);
+
+      const stagedDiffByPath = new Map(
+        uniquePaths.map((path) => {
+          const contentHash = contentHashByPath.get(path) ?? "none";
+          const cached = queryClient.getQueryData<DiffSummaryResponse>(
+            queryKeys.diff(path, "staged", 3, contentHash),
+          );
+
+          return [path, copyDiffCache(cached)] as const;
+        }),
+      );
+
+      const stagedDiffDetailByPath = new Map(
+        uniquePaths.map((path) => {
+          const contentHash = contentHashByPath.get(path) ?? "none";
+          const cached = queryClient.getQueryData<DiffDetailResponse>(
+            queryKeys.diffDetail(path, 3, contentHash),
+          );
+
+          return [path, copyDiffDetailCache(cached)] as const;
+        }),
+      );
+
+      const nextFiles = updateFilesAndRepo((currentFiles) => {
+        const targetStatusByPath = new Map<string, ChangedFileStatus>();
+
+        for (const path of uniquePaths) {
+          targetStatusByPath.set(
+            path,
+            inferUnstageTargetStatus(currentFiles, path, stagedDiffByPath.get(path)),
+          );
+        }
+
+        return applyUnstageManyTransition(currentFiles, targetStatusByPath);
+      });
+
+      for (const path of uniquePaths) {
+        const contentHash = contentHashByPath.get(path) ?? "none";
+        const stagedDiff = stagedDiffByPath.get(path);
+        const stagedDiffDetail = stagedDiffDetailByPath.get(path);
+
+        if (stagedDiff) {
+          queryClient.setQueryData(queryKeys.diff(path, "unstaged", 3, contentHash), stagedDiff);
+        }
+
+        if (stagedDiffDetail) {
+          queryClient.setQueryData(queryKeys.diffDetail(path, 3, contentHash), stagedDiffDetail);
+        }
+
+        queryClient.removeQueries({ queryKey: queryKeys.diff(path, "staged", 3, contentHash), exact: true });
+      }
+
+      clearFileMutationContentsForPaths(uniquePaths);
+
+      if (selectedFile && selectedFile.status === "staged" && pathSet.has(selectedFile.path)) {
+        const matching = nextFiles.find(
+          (file) => file.path === selectedFile.path && file.status !== "staged",
+        );
+        setSelectedFileRef(matching ? toSelectedFileRef(matching) : null);
+      }
+    },
+    onSettled: (_result, _error, paths) => {
+      endPendingMutations(paths);
+      revalidateAfterFileMutations(paths);
     },
   });
 
@@ -658,11 +790,12 @@ export function AppShell({ initialRepo }: AppShellProps) {
   function requestUnstageMany(paths: string[]) {
     resetFilesDockState();
 
-    const uniquePaths = [...new Set(paths)];
-
-    for (const path of uniquePaths) {
-      requestUnstage(path);
+    const acceptedPaths = beginPendingMutations(paths, "unstage");
+    if (acceptedPaths.length === 0) {
+      return;
     }
+
+    unstageManyMutation.mutate(acceptedPaths);
   }
 
   function requestCommit(message: string) {
@@ -695,11 +828,11 @@ export function AppShell({ initialRepo }: AppShellProps) {
           onViewModeChange={setViewMode}
           onPreviousFile={() => {
             if (!canGoPrevious) return;
-            setSelectedFile(files[resolvedSelectedIndex - 1]);
+            setSelectedFileRef(toSelectedFileRef(files[resolvedSelectedIndex - 1]));
           }}
           onNextFile={() => {
             if (!canGoNext) return;
-            setSelectedFile(files[resolvedSelectedIndex + 1]);
+            setSelectedFileRef(toSelectedFileRef(files[resolvedSelectedIndex + 1]));
           }}
           canGoPrevious={canGoPrevious}
           canGoNext={canGoNext}
@@ -719,7 +852,9 @@ export function AppShell({ initialRepo }: AppShellProps) {
           filesDockMessage={filesDockMessage}
           isCommitting={commitMutation.isPending}
           isPushing={pushMutation.isPending}
-          onSelectFile={setSelectedFile}
+          onSelectFile={(file) => {
+            setSelectedFileRef(toSelectedFileRef(file));
+          }}
           onStageFile={requestStage}
           onUnstageFile={requestUnstage}
           onStageFiles={requestStageMany}

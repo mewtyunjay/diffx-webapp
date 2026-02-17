@@ -3,6 +3,7 @@ export {
   pushChanges,
   stageFile,
   stageManyFiles,
+  unstageManyFiles,
   unstageFile,
 } from "./git/actions.service.js";
 export { getBranches } from "./git/branches.service.js";

@@ -7,9 +7,17 @@ type DiffFileHeaderProps = {
   onNextFile: () => void;
   canGoPrevious: boolean;
   canGoNext: boolean;
-  additions: number;
-  deletions: number;
+  additions: number | null;
+  deletions: number | null;
 };
+
+function formatAdditions(additions: number | null): string {
+  return additions === null ? "+-" : `+${additions}`;
+}
+
+function formatDeletions(deletions: number | null): string {
+  return deletions === null ? "--" : `-${deletions}`;
+}
 
 function toExtensionBadge(path: string): string {
   const normalized = path.trim();
@@ -50,8 +58,8 @@ export function DiffFileHeader({
           <span className="diff-file-name">{resolvedPath}</span>
 
           <div className="diff-file-stats">
-            <span className="diff-file-del">-{deletions}</span>
-            <span className="diff-file-add">+{additions}</span>
+            <span className="diff-file-del">{formatDeletions(deletions)}</span>
+            <span className="diff-file-add">{formatAdditions(additions)}</span>
           </div>
         </div>
       </div>

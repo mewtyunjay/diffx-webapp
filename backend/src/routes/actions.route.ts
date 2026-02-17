@@ -5,6 +5,7 @@ import type {
   PushRequest,
   StageManyRequest,
   StageFileRequest,
+  UnstageManyRequest,
   UnstageFileRequest,
 } from "@diffx/contracts";
 import {
@@ -12,6 +13,7 @@ import {
   pushChanges,
   stageFile,
   stageManyFiles,
+  unstageManyFiles,
   unstageFile,
 } from "../services/git.service.js";
 import { sendApiError, sendRouteError } from "./http.js";
@@ -64,6 +66,30 @@ router.post("/actions/unstage", async (req, res) => {
 
   try {
     const response = await unstageFile(body.path);
+    res.json(response);
+  } catch (error) {
+    sendRouteError(res, error);
+  }
+});
+
+router.post("/actions/unstage-many", async (req, res) => {
+  const body = req.body as Partial<UnstageManyRequest>;
+
+  if (
+    !Array.isArray(body.paths) ||
+    body.paths.length === 0 ||
+    body.paths.some((path) => typeof path !== "string" || path.trim().length === 0)
+  ) {
+    return sendApiError(
+      res,
+      400,
+      "INVALID_PATH",
+      "Body `paths` must be a non-empty string array.",
+    );
+  }
+
+  try {
+    const response = await unstageManyFiles(body.paths);
     res.json(response);
   } catch (error) {
     sendRouteError(res, error);

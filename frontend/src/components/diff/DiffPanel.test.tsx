@@ -26,7 +26,12 @@ describe("DiffPanel rendering", () => {
   });
 
   it("renders full diff directly when detail payload includes full context", () => {
-    const selectedFile: ChangedFile = { path: "backend/src/app.ts", status: "unstaged", contentHash: "hash-app" };
+    const selectedFile: ChangedFile = {
+      path: "backend/src/app.ts",
+      status: "unstaged",
+      contentHash: "hash-app",
+      stats: { additions: 1, deletions: 1 },
+    };
 
     const diffQuery = buildDiffQuery({
       mode: "git",
