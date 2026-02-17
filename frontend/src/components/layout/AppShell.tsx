@@ -1033,12 +1033,9 @@ export function AppShell({ initialRepo }: AppShellProps) {
   }
 
   function startOrResumeQuiz(message: string) {
-    const trimmedMessage = message.trim();
-    if (!trimmedMessage) {
-      return;
-    }
+    const normalizedMessage = message.trim();
 
-    setCommitMessageDraft(trimmedMessage);
+    setCommitMessageDraft(normalizedMessage);
     setPaneMode("quiz");
     setFilesDockMessage({
       tone: "info",
@@ -1063,7 +1060,7 @@ export function AppShell({ initialRepo }: AppShellProps) {
     }
 
     createQuizSessionMutation.mutate({
-      commitMessage: trimmedMessage,
+      commitMessage: normalizedMessage,
       selectedPath: selectedFile?.path ?? null,
     });
   }
@@ -1114,9 +1111,6 @@ export function AppShell({ initialRepo }: AppShellProps) {
 
   function requestQuizRegeneration() {
     const message = commitMessageDraft.trim();
-    if (!message) {
-      return;
-    }
 
     setBypassArmed(false);
     setQuizUnlockSignature(null);
@@ -1128,27 +1122,32 @@ export function AppShell({ initialRepo }: AppShellProps) {
 
   function requestPaneModeChange(mode: DiffPaneMode) {
     setPaneMode(mode);
-
-    if (mode === "quiz" && !quizSession && commitMessageDraft.trim().length > 0) {
-      startOrResumeQuiz(commitMessageDraft);
-    }
   }
 
   function requestCommit(message: string) {
     const trimmedMessage = message.trim();
-    if (!trimmedMessage) {
-      return;
-    }
 
     setCommitMessageDraft(trimmedMessage);
     setFilesDockMessage(null);
 
     if (!quizGateEnabled) {
+      if (!trimmedMessage) {
+        return;
+      }
+
       commitMutation.mutate(trimmedMessage);
       return;
     }
 
     if (quizValidationPassed || commitBypassActive) {
+      if (!trimmedMessage) {
+        setFilesDockMessage({
+          tone: "error",
+          text: "Add a commit message before finalizing commit.",
+        });
+        return;
+      }
+
       if (commitBypassActive) {
         setBypassArmed(false);
       }
@@ -1157,7 +1156,11 @@ export function AppShell({ initialRepo }: AppShellProps) {
       return;
     }
 
-    startOrResumeQuiz(trimmedMessage);
+    setPaneMode("quiz");
+    setFilesDockMessage({
+      tone: "info",
+      text: "Press generate tests in Quiz to start validation.",
+    });
   }
 
   function requestPush(createUpstream: boolean) {
@@ -1170,8 +1173,9 @@ export function AppShell({ initialRepo }: AppShellProps) {
   }
 
   const trimmedCommitDraft = commitMessageDraft.trim();
+  const requiresFinalCommitMessage = !quizGateEnabled || quizValidationPassed || commitBypassActive;
   const commitActionDisabled =
-    trimmedCommitDraft.length === 0 ||
+    (requiresFinalCommitMessage && trimmedCommitDraft.length === 0) ||
     repo.stagedCount === 0 ||
     commitMutation.isPending ||
     pushMutation.isPending;
@@ -1180,16 +1184,14 @@ export function AppShell({ initialRepo }: AppShellProps) {
     ? "commit"
     : quizValidationPassed || commitBypassActive
       ? "commit"
-      : quizSession?.status === "queued" || quizSession?.status === "streaming"
-        ? "resume quiz"
-        : quizSession?.status === "failed"
-          ? "resume quiz"
-          : "start quiz";
+      : "open quiz";
 
   const quizPanel = (
     <QuizPanel
+      quizSettings={settings.quiz}
+      commitMessageDraft={commitMessageDraft}
       session={quizSession}
-      isLoadingSession={quizSessionQuery.isPending}
+      isLoadingSession={Boolean(activeQuizSessionId) && quizSessionQuery.isPending}
       isCreatingSession={createQuizSessionMutation.isPending}
       isSubmittingAnswers={submitQuizAnswersMutation.isPending}
       isValidating={validateQuizMutation.isPending}
@@ -1198,20 +1200,13 @@ export function AppShell({ initialRepo }: AppShellProps) {
       bypassAvailable={quizGateEnabled && quizSession?.status === "failed"}
       bypassArmed={bypassArmed}
       onStartQuiz={() => {
-        if (trimmedCommitDraft.length === 0) {
-          setFilesDockMessage({
-            tone: "error",
-            text: "Enter a commit message in Files tab before starting quiz.",
-          });
-          return;
-        }
-
-        startOrResumeQuiz(trimmedCommitDraft);
+        startOrResumeQuiz(commitMessageDraft);
       }}
       onRegenerateQuiz={requestQuizRegeneration}
       onSelectAnswer={requestQuizAnswer}
       onValidateQuiz={requestQuizValidation}
       onBypassOnce={requestQuizBypass}
+      onOpenSettings={() => setSettingsOpen(true)}
     />
   );
 

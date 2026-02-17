@@ -10,7 +10,10 @@ import type {
 } from "@diffx/contracts";
 import { ApiRouteError } from "../../domain/api-route-error.js";
 import { getSettings } from "../settings/settings.service.js";
-import { getQuizGeneratorProvider } from "./codex-sdk.provider.js";
+import {
+  getQuizGeneratorProvider,
+  resetQuizGeneratorProviderForTests,
+} from "./codex-sdk.provider.js";
 import {
   buildQuizPromptContext,
   getCurrentQuizSourceFingerprint,
@@ -18,12 +21,32 @@ import {
 import { validateQuizPayload } from "./quiz-schema.validator.js";
 import { evaluateQuizValidation, normalizeQuizAnswers } from "./quiz-validation.service.js";
 
-const GENERATION_TIMEOUT_MS = 15_000;
+const GENERATION_TIMEOUT_ENV_KEY = "DIFFX_QUIZ_TIMEOUT_MS";
+const DEFAULT_GENERATION_TIMEOUT_MS = 60_000;
+const MIN_GENERATION_TIMEOUT_MS = 5_000;
+const MAX_GENERATION_TIMEOUT_MS = 300_000;
 const SESSION_TTL_MS = 60 * 60 * 1000;
 const MAX_SESSION_COUNT = 200;
 
 const sessions = new Map<string, QuizSession>();
 const events = new EventEmitter();
+
+function shouldLogQuizGeneration(): boolean {
+  return process.env.NODE_ENV !== "test" && process.env.VITEST !== "true";
+}
+
+function logQuizGeneration(message: string, details?: Record<string, unknown>) {
+  if (!shouldLogQuizGeneration()) {
+    return;
+  }
+
+  if (details) {
+    console.info(`[quiz] ${message}`, details);
+    return;
+  }
+
+  console.info(`[quiz] ${message}`);
+}
 
 function sessionEventKey(sessionId: string): string {
   return `session:${sessionId}`;
@@ -144,7 +167,7 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T
             new ApiRouteError(
               504,
               "QUIZ_GENERATION_FAILED",
-              "Quiz generation timed out before completion.",
+              `Quiz generation timed out after ${Math.ceil(timeoutMs / 1000)}s.`,
             ),
           );
         }, timeoutMs);
@@ -157,7 +180,7 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T
   }
 }
 
-function mapGenerationError(error: unknown): QuizSession["failure"] {
+function mapGenerationError(error: unknown): NonNullable<QuizSession["failure"]> {
   if (error instanceof ApiRouteError) {
     return {
       message: error.message,
@@ -178,18 +201,37 @@ function mapGenerationError(error: unknown): QuizSession["failure"] {
   };
 }
 
+function getGenerationTimeoutMs(): number {
+  const rawTimeout = process.env[GENERATION_TIMEOUT_ENV_KEY]?.trim();
+
+  if (!rawTimeout) {
+    return DEFAULT_GENERATION_TIMEOUT_MS;
+  }
+
+  const parsedTimeout = Number(rawTimeout);
+
+  if (!Number.isFinite(parsedTimeout)) {
+    return DEFAULT_GENERATION_TIMEOUT_MS;
+  }
+
+  const normalizedTimeout = Math.trunc(parsedTimeout);
+
+  if (
+    normalizedTimeout < MIN_GENERATION_TIMEOUT_MS ||
+    normalizedTimeout > MAX_GENERATION_TIMEOUT_MS
+  ) {
+    return DEFAULT_GENERATION_TIMEOUT_MS;
+  }
+
+  return normalizedTimeout;
+}
+
 function sanitizeCommitMessage(messageInput: unknown): string {
   if (typeof messageInput !== "string") {
-    throw new ApiRouteError(400, "INVALID_COMMIT_MESSAGE", "Body `commitMessage` is required.");
+    throw new ApiRouteError(400, "INVALID_COMMIT_MESSAGE", "Body `commitMessage` must be a string.");
   }
 
-  const trimmed = messageInput.trim();
-
-  if (!trimmed) {
-    throw new ApiRouteError(400, "INVALID_COMMIT_MESSAGE", "Body `commitMessage` is required.");
-  }
-
-  return trimmed;
+  return messageInput.trim();
 }
 
 function validateSessionId(sessionId: string) {
@@ -232,6 +274,54 @@ async function runGeneration(
     promptContext: string;
   },
 ) {
+  const timeoutMs = getGenerationTimeoutMs();
+  const provider = getQuizGeneratorProvider();
+  const agentConfig = provider.getAgentConfig();
+
+  logQuizGeneration("generate tests requested", {
+    sessionId,
+    provider: agentConfig.provider,
+    model: agentConfig.model,
+    reasoningEffort: agentConfig.reasoningEffort,
+    questionCount: input.questionCount,
+    focusFiles: input.focusFiles.length,
+    hasCommitMessage: input.commitMessage.trim().length > 0,
+    timeoutMs,
+  });
+
+  if (input.focusFiles.length === 0) {
+    const failedSession = touchSession(sessionId, (current) => ({
+      ...current,
+      status: "failed",
+      updatedAt: new Date().toISOString(),
+      progress: {
+        phase: "generating",
+        percent: 100,
+        message: "No files matched the selected quiz scope.",
+      },
+      failure: {
+        message: "No files matched the selected quiz scope. Stage changes or switch scope to all changes.",
+        retryable: false,
+      },
+      quiz: null,
+      validation: null,
+    }));
+
+    logQuizGeneration("generate tests skipped", {
+      sessionId,
+      provider: agentConfig.provider,
+      model: agentConfig.model,
+      reasoningEffort: agentConfig.reasoningEffort,
+      status: "failed",
+      reason: "no-files-in-scope",
+    });
+
+    publishStatus(failedSession);
+    publishError(failedSession);
+    publishComplete(failedSession);
+    return;
+  }
+
   touchSession(sessionId, (current) => ({
     ...current,
     status: "streaming",
@@ -247,9 +337,17 @@ async function runGeneration(
   publishStatus(getSessionOrThrow(sessionId));
 
   try {
-    const provider = getQuizGeneratorProvider();
-    const rawPayload = await withTimeout(provider.generateQuiz(input), GENERATION_TIMEOUT_MS);
+    const rawPayload = await withTimeout(provider.generateQuiz(input), timeoutMs);
     const payload = validateQuizPayload(rawPayload);
+
+    logQuizGeneration("generate tests completed", {
+      sessionId,
+      provider: agentConfig.provider,
+      model: agentConfig.model,
+      reasoningEffort: agentConfig.reasoningEffort,
+      status: "ready",
+      questions: payload.questions.length,
+    });
 
     const readySession = touchSession(sessionId, (current) => ({
       ...current,
@@ -269,6 +367,16 @@ async function runGeneration(
     publishComplete(readySession);
   } catch (error) {
     const failure = mapGenerationError(error);
+    logQuizGeneration("generate tests failed", {
+      sessionId,
+      provider: agentConfig.provider,
+      model: agentConfig.model,
+      reasoningEffort: agentConfig.reasoningEffort,
+      status: "failed",
+      message: failure.message,
+      retryable: failure.retryable,
+    });
+
     const failedSession = touchSession(sessionId, (current) => ({
       ...current,
       status: "failed",
@@ -538,4 +646,5 @@ export async function validateQuizSession(
 export function resetQuizSessionsForTests() {
   sessions.clear();
   events.removeAllListeners();
+  resetQuizGeneratorProviderForTests();
 }

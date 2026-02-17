@@ -1,13 +1,50 @@
 import request from "supertest";
 import { beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../app.js";
+import {
+  setQuizGeneratorProviderForTests,
+  type QuizGeneratorProvider,
+} from "../services/quiz/codex-sdk.provider.js";
 import { resetQuizSessionsForTests } from "../services/quiz/quiz-session.service.js";
-import { resetSettingsForTests } from "../services/settings/settings.service.js";
+import { resetSettingsForTests, updateSettings } from "../services/settings/settings.service.js";
+
+function createDeterministicProvider(): QuizGeneratorProvider {
+  return {
+    getAgentConfig() {
+      return {
+        provider: "deterministic-test-provider",
+        model: "deterministic",
+        reasoningEffort: "n/a",
+      };
+    },
+
+    async generateQuiz(input) {
+      return {
+        title: "Commit readiness quiz",
+        generatedAt: new Date().toISOString(),
+        questions: Array.from({ length: input.questionCount }, (_, index) => ({
+          id: `q-${index + 1}`,
+          prompt: `Question ${index + 1}`,
+          snippet: null,
+          options: ["A", "B", "C", "D"],
+          correctOptionIndex: index % 4,
+          explanation: null,
+          tags: ["test"],
+        })),
+      };
+    },
+  };
+}
 
 async function waitForSession(
   app: ReturnType<typeof createApp>,
   sessionId: string,
-): Promise<{ status: string; sourceFingerprint: string; quiz: { questions: { id: string }[] } | null }> {
+): Promise<{
+  status: string;
+  sourceFingerprint: string;
+  quiz: { questions: { id: string }[] } | null;
+  failure: { message: string } | null;
+}> {
   const deadline = Date.now() + 2000;
 
   while (Date.now() < deadline) {
@@ -30,7 +67,17 @@ async function waitForSession(
 describe("/api/quiz", () => {
   beforeEach(() => {
     resetSettingsForTests();
+    updateSettings({
+      quiz: {
+        gateEnabled: false,
+        questionCount: 4,
+        scope: "all_changes",
+        validationMode: "answer_all",
+        scoreThreshold: null,
+      },
+    });
     resetQuizSessionsForTests();
+    setQuizGeneratorProviderForTests(createDeterministicProvider());
   });
 
   it("rejects session creation without commit message", async () => {
@@ -40,6 +87,18 @@ describe("/api/quiz", () => {
 
     expect(response.status).toBe(400);
     expect(response.body).toMatchObject({ code: "INVALID_COMMIT_MESSAGE" });
+  });
+
+  it("allows session creation with an empty commit message", async () => {
+    const app = createApp();
+
+    const response = await request(app).post("/api/quiz/sessions").send({
+      commitMessage: "",
+      selectedPath: null,
+    });
+
+    expect(response.status).toBe(201);
+    expect(response.body).toMatchObject({ status: "queued", commitMessageDraft: "" });
   });
 
   it("creates and retrieves a quiz session", async () => {
@@ -119,5 +178,36 @@ describe("/api/quiz", () => {
 
     expect(validateResponse.status).toBe(409);
     expect(validateResponse.body).toMatchObject({ code: "QUIZ_REPO_STATE_CHANGED" });
+  });
+
+  it("marks session as failed when provider throws", async () => {
+    const app = createApp();
+
+    setQuizGeneratorProviderForTests({
+      getAgentConfig() {
+        return {
+          provider: "throwing-test-provider",
+          model: "deterministic",
+          reasoningEffort: "n/a",
+        };
+      },
+
+      async generateQuiz() {
+        throw new Error("codex unavailable");
+      },
+    });
+
+    const createResponse = await request(app).post("/api/quiz/sessions").send({
+      commitMessage: "wire quiz gate",
+      selectedPath: null,
+    });
+
+    expect(createResponse.status).toBe(201);
+
+    const session = await waitForSession(app, createResponse.body.id);
+
+    expect(session.status).toBe("failed");
+    expect(session.quiz).toBeNull();
+    expect(session.failure).toMatchObject({ message: "codex unavailable" });
   });
 });

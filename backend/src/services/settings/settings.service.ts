@@ -95,8 +95,8 @@ function validateAndNormalizeSettings(next: AppSettings): AppSettings {
     );
   }
 
-  if (quiz.scope !== "staged" && quiz.scope !== "selected_file") {
-    throw toInvalidSettingsError("`quiz.scope` must be 'staged' or 'selected_file'.");
+  if (quiz.scope !== "staged" && quiz.scope !== "all_changes") {
+    throw toInvalidSettingsError("`quiz.scope` must be 'staged' or 'all_changes'.");
   }
 
   if (!isValidationMode(quiz.validationMode)) {

@@ -31,7 +31,7 @@ const COPY_BY_CODE: Record<ApiErrorCode, string> = {
   QUIZ_SESSION_FAILED: "Quiz generation failed. Regenerate the quiz or bypass once.",
   QUIZ_VALIDATION_FAILED: "Quiz validation failed. Review answers and try again.",
   QUIZ_REPO_STATE_CHANGED: "Repository changed since quiz started. Generate a new quiz.",
-  QUIZ_GENERATION_FAILED: "Quiz generation timed out. Try again.",
+  QUIZ_GENERATION_FAILED: "Quiz generation failed. Verify local Codex login and retry.",
   NO_UPSTREAM: "No upstream branch is configured for this branch.",
   GIT_COMMAND_FAILED: "Git command failed. Refresh and try again.",
   INTERNAL_ERROR: "Internal server error. Try again in a moment.",

@@ -51,7 +51,7 @@ describe("/api/settings", () => {
       quiz: {
         gateEnabled: true,
         questionCount: 5,
-        scope: "selected_file",
+        scope: "all_changes",
         validationMode: "score_threshold",
         scoreThreshold: 3,
       },
@@ -66,7 +66,7 @@ describe("/api/settings", () => {
       quiz: {
         gateEnabled: true,
         questionCount: 5,
-        scope: "selected_file",
+        scope: "all_changes",
         validationMode: "score_threshold",
         scoreThreshold: 3,
       },

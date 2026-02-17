@@ -174,9 +174,9 @@ export function FilesTab({
         : "pushing..."
       : isCommitAction
         ? (commitActionLabel ?? "commit")
-      : dockAction === "create-upstream"
-        ? "create upstream + push"
-        : dockAction;
+        : dockAction === "create-upstream"
+          ? "create upstream + push"
+          : dockAction;
 
   const dockInfo =
     dockAction === "commit"
@@ -285,7 +285,7 @@ export function FilesTab({
               rows={2}
               value={commitMessage}
               onChange={(event) => onCommitMessageChange(event.target.value)}
-              placeholder="describe why this change exists"
+              placeholder="Commit Message..."
             />
           ) : (
             <p className="inline-note files-commit-status">{dockInfo}</p>

@@ -143,7 +143,7 @@ export type UnstageManyRequest = { paths: string[] };
 export type CommitRequest = { message: string };
 export type PushRequest = { createUpstream?: boolean };
 
-export type QuizGenerationScope = "staged" | "selected_file";
+export type QuizGenerationScope = "staged" | "all_changes";
 export type QuizValidationMode = "answer_all" | "pass_all" | "score_threshold";
 
 export type QuizSettings = {

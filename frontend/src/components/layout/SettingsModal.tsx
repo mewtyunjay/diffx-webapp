@@ -1,6 +1,17 @@
 import { useEffect, useState } from "react";
 import type { AppSettings, QuizGenerationScope, QuizValidationMode } from "@diffx/contracts";
 
+const SCOPE_OPTIONS: Array<{ value: QuizGenerationScope; label: string }> = [
+  { value: "staged", label: "staged changes" },
+  { value: "all_changes", label: "all changes" },
+];
+
+const VALIDATION_OPTIONS: Array<{ value: QuizValidationMode; label: string }> = [
+  { value: "answer_all", label: "answer all" },
+  { value: "pass_all", label: "pass all" },
+  { value: "score_threshold", label: "score threshold" },
+];
+
 type SettingsModalProps = {
   open: boolean;
   settings: AppSettings;
@@ -61,19 +72,27 @@ export function SettingsModal({
         </div>
 
         <div className="modal-body">
-          <label className="settings-row">
+          <div className="settings-row">
             <span className="settings-label">Quiz gate</span>
-            <input
-              type="checkbox"
-              checked={gateEnabled}
-              onChange={(event) => setGateEnabled(event.target.checked)}
-            />
-          </label>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={gateEnabled}
+              className={gateEnabled ? "settings-switch settings-switch-enabled" : "settings-switch"}
+              onClick={() => setGateEnabled((enabled) => !enabled)}
+            >
+              <span className="settings-switch-track" aria-hidden="true">
+                <span className="settings-switch-thumb" />
+              </span>
+              <span>{gateEnabled ? "enabled" : "disabled"}</span>
+            </button>
+          </div>
 
-          <label className="settings-row">
+          <label className="settings-row" htmlFor="quiz-question-count">
             <span className="settings-label">Question count</span>
             <input
-              className="settings-input"
+              id="quiz-question-count"
+              className="settings-input settings-input-number"
               type="number"
               min={1}
               max={12}
@@ -82,36 +101,56 @@ export function SettingsModal({
             />
           </label>
 
-          <label className="settings-row">
+          <div className="settings-row settings-row-block">
             <span className="settings-label">Generation scope</span>
-            <select
-              className="settings-input"
-              value={scope}
-              onChange={(event) => setScope(event.target.value as QuizGenerationScope)}
-            >
-              <option value="staged">staged files</option>
-              <option value="selected_file">selected file</option>
-            </select>
-          </label>
+            <div className="settings-segment" role="radiogroup" aria-label="Quiz generation scope">
+              {SCOPE_OPTIONS.map((option) => {
+                const selected = scope === option.value;
 
-          <label className="settings-row">
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    className={selected ? "settings-segment-button settings-segment-button-selected" : "settings-segment-button"}
+                    onClick={() => setScope(option.value)}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="settings-row settings-row-block">
             <span className="settings-label">Validation mode</span>
-            <select
-              className="settings-input"
-              value={validationMode}
-              onChange={(event) => setValidationMode(event.target.value as QuizValidationMode)}
-            >
-              <option value="answer_all">answer_all</option>
-              <option value="pass_all">pass_all</option>
-              <option value="score_threshold">score_threshold</option>
-            </select>
-          </label>
+            <div className="settings-segment" role="radiogroup" aria-label="Quiz validation mode">
+              {VALIDATION_OPTIONS.map((option) => {
+                const selected = validationMode === option.value;
+
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    className={selected ? "settings-segment-button settings-segment-button-selected" : "settings-segment-button"}
+                    onClick={() => setValidationMode(option.value)}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
           {validationMode === "score_threshold" ? (
-            <label className="settings-row">
+            <label className="settings-row" htmlFor="quiz-threshold">
               <span className="settings-label">Score threshold</span>
               <input
-                className="settings-input"
+                id="quiz-threshold"
+                className="settings-input settings-input-number"
                 type="number"
                 min={1}
                 value={scoreThreshold}
@@ -125,6 +164,9 @@ export function SettingsModal({
         </div>
 
         <div className="modal-actions">
+          <button type="button" className="hud-button" onClick={onClose}>
+            cancel
+          </button>
           <button
             type="button"
             className="hud-button"

@@ -821,6 +821,44 @@ describe("App", () => {
     });
   });
 
+  it("opens quiz first and starts generation only from generate button", async () => {
+    getRepoSummaryMock.mockResolvedValue(buildGitRepoSummary({ stagedCount: 1 }));
+    getSettingsMock.mockResolvedValue({
+      quiz: {
+        gateEnabled: true,
+        questionCount: 4,
+        scope: "staged",
+        validationMode: "answer_all",
+        scoreThreshold: null,
+      },
+    });
+
+    getChangedFilesMock.mockResolvedValue([
+      { path: "frontend/src/App.tsx", status: "staged", contentHash: "hash-frontend-app" },
+    ]);
+
+    getHealthMock.mockResolvedValue({ ok: true });
+    createQuizSessionMock.mockResolvedValue(buildQuizSession("queued"));
+    getQuizSessionMock.mockResolvedValue(buildQuizSession("queued"));
+
+    renderWithQueryClient();
+
+    fireEvent.click(await screen.findByRole("button", { name: "open quiz" }));
+
+    expect(createQuizSessionMock).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "generate tests" }));
+
+    await waitFor(() => {
+      expect(createQuizSessionMock).toHaveBeenCalledWith({
+        commitMessage: "",
+        selectedPath: "frontend/src/App.tsx",
+      });
+    });
+
+    expect(commitChangesMock).not.toHaveBeenCalled();
+  });
+
   it("gates commit behind quiz validation and unlocks manual commit", async () => {
     getRepoSummaryMock.mockResolvedValue(buildGitRepoSummary({ stagedCount: 1 }));
     getSettingsMock.mockResolvedValue({
@@ -864,7 +902,11 @@ describe("App", () => {
     const messageBox = await screen.findByPlaceholderText("describe why this change exists");
     fireEvent.change(messageBox, { target: { value: "ship files dock" } });
 
-    fireEvent.click(screen.getByRole("button", { name: "start quiz" }));
+    fireEvent.click(screen.getByRole("button", { name: "open quiz" }));
+
+    expect(createQuizSessionMock).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "generate tests" }));
 
     await waitFor(() => {
       expect(createQuizSessionMock).toHaveBeenCalledWith({

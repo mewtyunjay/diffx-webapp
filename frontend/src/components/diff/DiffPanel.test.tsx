@@ -97,6 +97,8 @@ describe("DiffPanel rendering", () => {
       />,
     );
 
+    expect(screen.getByRole("button", { name: "diff" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "quiz" })).toBeInTheDocument();
     expect(screen.getByTestId("render-full")).toBeInTheDocument();
     expect(screen.queryByText("Loading full diff...")).not.toBeInTheDocument();
   });
@@ -190,6 +192,8 @@ describe("DiffPanel rendering", () => {
       />,
     );
 
+    expect(screen.getByRole("button", { name: "diff" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "quiz" })).toBeInTheDocument();
     expect(screen.getByText("quiz panel content")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "split" })).not.toBeInTheDocument();
   });

@@ -3,7 +3,6 @@ import type { ChangedFile, DiffScope, QuizSettings } from "@diffx/contracts";
 import { getDiffSummary } from "../diff/diff-summary.service.js";
 import { getChangedFiles } from "../git/files.service.js";
 
-const MAX_FILES_IN_PROMPT = 3;
 const MAX_PATCH_LINES_PER_FILE = 120;
 
 type QuizPromptContext = {
@@ -37,25 +36,14 @@ function toScope(status: ChangedFile["status"]): DiffScope {
 function pickPromptFiles(
   files: ChangedFile[],
   settings: QuizSettings,
-  selectedPath: string | null,
+  _selectedPath: string | null,
 ): ChangedFile[] {
-  if (selectedPath) {
-    const selected = files.find((file) => file.path === selectedPath);
-    if (selected) {
-      return [selected];
-    }
-  }
-
-  if (settings.scope === "selected_file" && files.length > 0) {
-    return [files[0]!];
+  if (settings.scope === "all_changes") {
+    return files;
   }
 
   const staged = files.filter((file) => file.status === "staged");
-  if (staged.length > 0) {
-    return staged.slice(0, MAX_FILES_IN_PROMPT);
-  }
-
-  return files.slice(0, MAX_FILES_IN_PROMPT);
+  return staged;
 }
 
 function toBoundedPatch(patch: string): string {
