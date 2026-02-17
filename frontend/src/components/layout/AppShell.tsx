@@ -323,6 +323,7 @@ export function AppShell({ initialRepo }: AppShellProps) {
   });
 
   const files = filesQuery.data ?? [];
+  const filesUiError = filesQuery.isError ? toUiError(filesQuery.error) : null;
 
   const selectedFile = useMemo(() => {
     if (!selectedFileRef) {
@@ -845,13 +846,17 @@ export function AppShell({ initialRepo }: AppShellProps) {
           files={files}
           selectedFile={selectedFile}
           isLoadingFiles={filesQuery.isPending}
-          filesError={filesQuery.isError ? toUiError(filesQuery.error).message : null}
+          filesError={filesUiError?.message ?? null}
+          filesErrorRetryable={filesUiError?.retryable ?? false}
           pendingMutationsByPath={pendingMutationsByPath}
           stagedCount={repo.stagedCount}
           filesDockAction={filesDockAction}
           filesDockMessage={filesDockMessage}
           isCommitting={commitMutation.isPending}
           isPushing={pushMutation.isPending}
+          onRetryFiles={() => {
+            void filesQuery.refetch();
+          }}
           onSelectFile={(file) => {
             setSelectedFileRef(toSelectedFileRef(file));
           }}

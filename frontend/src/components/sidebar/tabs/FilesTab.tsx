@@ -227,13 +227,8 @@ export function FilesTab({
                   const stats = statsByFile.get(fileKey(file));
                   const isStaged = file.status === "staged";
                   const pendingMutation = pendingMutationsByPath.get(file.path);
-                  const actionLabel = pendingMutation
-                    ? pendingMutation === "stage"
-                      ? "staging..."
-                      : "unstaging..."
-                    : isStaged
-                      ? "-"
-                      : "+";
+                  const actionLabel = isStaged ? "-" : "+";
+                  const actionIntent = isStaged ? "unstage" : "stage";
 
                   return (
                     <li key={`${file.status}:${file.path}`} className={active ? "file-row file-row-active" : "file-row"}>
@@ -250,7 +245,7 @@ export function FilesTab({
                       <button
                         type="button"
                         className="file-row-action"
-                        aria-label={`${pendingMutation ?? (isStaged ? "unstage" : "stage")} ${file.path}`}
+                        aria-label={`${actionIntent} ${file.path}`}
                         disabled={Boolean(pendingMutation)}
                         onClick={() => {
                           if (isStaged) {

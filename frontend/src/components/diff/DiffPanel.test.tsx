@@ -1,8 +1,9 @@
 import React from "react";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { UseQueryResult } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ChangedFile, DiffDetailResponse } from "@diffx/contracts";
+import { ApiRequestError } from "../../services/api/client";
 import { DiffPanel } from "./DiffPanel";
 
 vi.mock("./PierreDiffRenderer", () => ({
@@ -17,7 +18,17 @@ function buildDiffQuery(data: DiffDetailResponse): UseQueryResult<DiffDetailResp
     isPending: false,
     isError: false,
     error: null,
+    refetch: vi.fn(),
   } as UseQueryResult<DiffDetailResponse, Error>;
+}
+
+function buildSelectedFile(): ChangedFile {
+  return {
+    path: "backend/src/app.ts",
+    status: "unstaged",
+    contentHash: "hash-app",
+    stats: { additions: 1, deletions: 1 },
+  };
 }
 
 describe("DiffPanel rendering", () => {
@@ -26,12 +37,7 @@ describe("DiffPanel rendering", () => {
   });
 
   it("renders full diff directly when detail payload includes full context", () => {
-    const selectedFile: ChangedFile = {
-      path: "backend/src/app.ts",
-      status: "unstaged",
-      contentHash: "hash-app",
-      stats: { additions: 1, deletions: 1 },
-    };
+    const selectedFile = buildSelectedFile();
 
     const diffQuery = buildDiffQuery({
       mode: "git",
@@ -90,5 +96,62 @@ describe("DiffPanel rendering", () => {
 
     expect(screen.getByTestId("render-full")).toBeInTheDocument();
     expect(screen.queryByText("Loading full diff...")).not.toBeInTheDocument();
+  });
+
+  it("shows retry action for retryable diff load errors", () => {
+    const refetch = vi.fn();
+
+    render(
+      <DiffPanel
+        selectedFile={buildSelectedFile()}
+        fileChangeCountLabel="1/1"
+        viewMode="split"
+        onViewModeChange={() => undefined}
+        onPreviousFile={() => undefined}
+        onNextFile={() => undefined}
+        canGoPrevious={false}
+        canGoNext={false}
+        diffQuery={
+          {
+            data: undefined,
+            isPending: false,
+            isError: true,
+            error: new ApiRequestError(500, "INTERNAL_ERROR", "internal"),
+            refetch,
+          } as UseQueryResult<DiffDetailResponse, Error>
+        }
+      />,
+    );
+
+    expect(screen.getByText("Internal server error. Try again in a moment.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "retry diff" }));
+    expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides retry action for non-retryable diff load errors", () => {
+    render(
+      <DiffPanel
+        selectedFile={buildSelectedFile()}
+        fileChangeCountLabel="1/1"
+        viewMode="split"
+        onViewModeChange={() => undefined}
+        onPreviousFile={() => undefined}
+        onNextFile={() => undefined}
+        canGoPrevious={false}
+        canGoNext={false}
+        diffQuery={
+          {
+            data: undefined,
+            isPending: false,
+            isError: true,
+            error: new ApiRequestError(400, "INVALID_PATH", "invalid path"),
+            refetch: vi.fn(),
+          } as UseQueryResult<DiffDetailResponse, Error>
+        }
+      />,
+    );
+
+    expect(screen.getByText("Invalid file path was requested.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "retry diff" })).not.toBeInTheDocument();
   });
 });

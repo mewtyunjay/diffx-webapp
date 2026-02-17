@@ -138,7 +138,8 @@ describe("FilesTab row actions", () => {
     const unstageButton = screen.getByRole("button", { name: "unstage src/already-staged.ts" });
 
     expect(pendingButton).toBeDisabled();
-    expect(pendingButton).toHaveTextContent("staging...");
+    expect(pendingButton).toHaveTextContent("+");
+    expect(pendingButton).not.toHaveTextContent("staging...");
     expect(otherStageButton).toBeEnabled();
     expect(unstageButton).toBeEnabled();
 

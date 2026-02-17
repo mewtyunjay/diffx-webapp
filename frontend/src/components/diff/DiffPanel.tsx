@@ -85,7 +85,16 @@ export function DiffPanel({
   if (diffQuery.isPending) {
     content = <p className="inline-note">Loading diff...</p>;
   } else if (diffQuery.isError) {
-    content = <p className="error-note">{diffError?.message ?? "Unable to load diff for selected file."}</p>;
+    content = (
+      <div className="inline-error-block">
+        <p className="error-note">{diffError?.message ?? "Unable to load diff for selected file."}</p>
+        {diffError?.retryable ? (
+          <button className="hud-button hud-button-compact" type="button" onClick={() => void diffQuery.refetch()}>
+            retry diff
+          </button>
+        ) : null}
+      </div>
+    );
   } else if (!diffFile) {
     content = <p className="empty-state">No diff available for this selection.</p>;
   } else if (diffFile.isBinary) {

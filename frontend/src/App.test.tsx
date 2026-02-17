@@ -178,6 +178,29 @@ describe("App", () => {
     expect(await screen.findByText("Not a Git repository")).toBeInTheDocument();
   });
 
+  it("retries repository bootstrap on retryable failures", async () => {
+    getRepoSummaryMock
+      .mockRejectedValueOnce(new ApiRequestError(500, "INTERNAL_ERROR", "internal"))
+      .mockRejectedValueOnce(new ApiRequestError(500, "INTERNAL_ERROR", "internal"))
+      .mockResolvedValue(buildGitRepoSummary());
+
+    getChangedFilesMock.mockResolvedValue([]);
+    getHealthMock.mockResolvedValue({ ok: true });
+
+    renderWithQueryClient();
+
+    expect(
+      await screen.findByText("Internal server error. Try again in a moment.", {}, { timeout: 4000 }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "retry" }));
+
+    await waitFor(() => {
+      expect(getRepoSummaryMock.mock.calls.length).toBeGreaterThanOrEqual(3);
+    });
+
+    expect(await screen.findByText("diffx-webapp")).toBeInTheDocument();
+  });
+
   it("renders app shell with topbar and tabs in git mode", async () => {
     getRepoSummaryMock.mockResolvedValue(
       buildGitRepoSummary({ stagedCount: 1, unstagedCount: 2 }),
@@ -222,6 +245,34 @@ describe("App", () => {
     expect(await screen.findByRole("tab", { name: "Files" })).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "app.ts" })).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "split" })).toBeInTheDocument();
+  });
+
+  it("retries files query on retryable failures", async () => {
+    getRepoSummaryMock.mockResolvedValue(buildGitRepoSummary({ unstagedCount: 1 }));
+
+    getChangedFilesMock
+      .mockRejectedValueOnce(new ApiRequestError(500, "INTERNAL_ERROR", "internal"))
+      .mockResolvedValueOnce([
+        {
+          path: "backend/src/app.ts",
+          status: "unstaged",
+          contentHash: "hash-app",
+          stats: { additions: 1, deletions: 1 },
+        },
+      ]);
+
+    getHealthMock.mockResolvedValue({ ok: true });
+
+    renderWithQueryClient();
+
+    expect(await screen.findByText("Internal server error. Try again in a moment.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "retry files" }));
+
+    await waitFor(() => {
+      expect(getChangedFilesMock).toHaveBeenCalledTimes(2);
+    });
+
+    expect(await screen.findByRole("button", { name: "app.ts" })).toBeInTheDocument();
   });
 
   it("uses files payload stats as header source of truth", async () => {
@@ -357,7 +408,12 @@ describe("App", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "stage backend/src/app.ts" })).toHaveTextContent("staging...");
+      const pendingActionButton = screen.getByRole("button", {
+        name: /(stage|unstage) backend\/src\/app\.ts/,
+      });
+      expect(pendingActionButton).toBeDisabled();
+      expect(pendingActionButton).not.toHaveTextContent("staging...");
+      expect(pendingActionButton).not.toHaveTextContent("unstaging...");
     });
 
     expect(screen.queryByText("Loading diff...")).not.toBeInTheDocument();

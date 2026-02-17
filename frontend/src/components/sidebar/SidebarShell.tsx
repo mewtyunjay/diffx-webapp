@@ -10,12 +10,14 @@ type SidebarShellProps = {
   selectedFile: ChangedFile | null;
   isLoadingFiles: boolean;
   filesError: string | null;
+  filesErrorRetryable: boolean;
   pendingMutationsByPath: ReadonlyMap<string, "stage" | "unstage">;
   stagedCount: number;
   filesDockAction: FilesDockAction;
   filesDockMessage: FilesDockMessage;
   isCommitting: boolean;
   isPushing: boolean;
+  onRetryFiles: () => void;
   onSelectFile: (file: ChangedFile) => void;
   onStageFile: (path: string) => void;
   onUnstageFile: (path: string) => void;
@@ -32,12 +34,14 @@ export function SidebarShell({
   selectedFile,
   isLoadingFiles,
   filesError,
+  filesErrorRetryable,
   pendingMutationsByPath,
   stagedCount,
   filesDockAction,
   filesDockMessage,
   isCommitting,
   isPushing,
+  onRetryFiles,
   onSelectFile,
   onStageFile,
   onUnstageFile,
@@ -67,7 +71,16 @@ export function SidebarShell({
         {activeTab === "files" ? (
           <>
             {isLoadingFiles ? <p className="inline-note">Loading files...</p> : null}
-            {filesError ? <p className="error-note">{filesError}</p> : null}
+            {filesError ? (
+              <div className="inline-error-block">
+                <p className="error-note">{filesError}</p>
+                {filesErrorRetryable ? (
+                  <button className="hud-button hud-button-compact" type="button" onClick={onRetryFiles}>
+                    retry files
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
             {!isLoadingFiles && !filesError ? (
               <FilesTab
                 files={files}
