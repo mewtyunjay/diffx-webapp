@@ -84,6 +84,8 @@ describe("DiffPanel rendering", () => {
       <DiffPanel
         selectedFile={selectedFile}
         fileChangeCountLabel="1/1"
+        paneMode="diff"
+        onPaneModeChange={() => undefined}
         viewMode="split"
         onViewModeChange={() => undefined}
         onPreviousFile={() => undefined}
@@ -91,6 +93,7 @@ describe("DiffPanel rendering", () => {
         canGoPrevious={false}
         canGoNext={false}
         diffQuery={diffQuery}
+        quizPanel={<div />}
       />,
     );
 
@@ -105,6 +108,8 @@ describe("DiffPanel rendering", () => {
       <DiffPanel
         selectedFile={buildSelectedFile()}
         fileChangeCountLabel="1/1"
+        paneMode="diff"
+        onPaneModeChange={() => undefined}
         viewMode="split"
         onViewModeChange={() => undefined}
         onPreviousFile={() => undefined}
@@ -120,6 +125,7 @@ describe("DiffPanel rendering", () => {
             refetch,
           } as UseQueryResult<DiffDetailResponse, Error>
         }
+        quizPanel={<div />}
       />,
     );
 
@@ -133,6 +139,8 @@ describe("DiffPanel rendering", () => {
       <DiffPanel
         selectedFile={buildSelectedFile()}
         fileChangeCountLabel="1/1"
+        paneMode="diff"
+        onPaneModeChange={() => undefined}
         viewMode="split"
         onViewModeChange={() => undefined}
         onPreviousFile={() => undefined}
@@ -148,10 +156,41 @@ describe("DiffPanel rendering", () => {
             refetch: vi.fn(),
           } as UseQueryResult<DiffDetailResponse, Error>
         }
+        quizPanel={<div />}
       />,
     );
 
     expect(screen.getByText("Invalid file path was requested.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "retry diff" })).not.toBeInTheDocument();
+  });
+
+  it("renders quiz panel content when pane mode is quiz", () => {
+    render(
+      <DiffPanel
+        selectedFile={buildSelectedFile()}
+        fileChangeCountLabel="1/1"
+        paneMode="quiz"
+        onPaneModeChange={() => undefined}
+        viewMode="split"
+        onViewModeChange={() => undefined}
+        onPreviousFile={() => undefined}
+        onNextFile={() => undefined}
+        canGoPrevious={false}
+        canGoNext={false}
+        diffQuery={
+          {
+            data: undefined,
+            isPending: false,
+            isError: false,
+            error: null,
+            refetch: vi.fn(),
+          } as UseQueryResult<DiffDetailResponse, Error>
+        }
+        quizPanel={<div>quiz panel content</div>}
+      />,
+    );
+
+    expect(screen.getByText("quiz panel content")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "split" })).not.toBeInTheDocument();
   });
 });

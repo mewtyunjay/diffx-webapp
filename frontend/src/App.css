@@ -92,6 +92,10 @@
   justify-content: flex-end;
 }
 
+.diff-pane-switch {
+  justify-content: flex-start;
+}
+
 .diff-toolbar-spacer {
   flex: 1;
 }
@@ -698,6 +702,126 @@
   flex-wrap: wrap;
 }
 
+.quiz-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-height: 100%;
+}
+
+.quiz-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.quiz-questions {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.quiz-card {
+  border: 0.5px solid var(--color-line);
+  background: rgba(13, 16, 18, 0.85);
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.quiz-prompt {
+  margin: 0;
+  font-size: 1.24rem;
+  color: var(--color-text-bright);
+}
+
+.quiz-snippet {
+  margin: 0;
+  border: 0.5px solid var(--color-border);
+  background: rgba(10, 12, 14, 0.9);
+  padding: 0.8rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 1.05rem;
+}
+
+.quiz-options {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.quiz-options .hud-button {
+  text-transform: none;
+  letter-spacing: 0.04em;
+  text-align: left;
+  padding: 0.7rem 0.9rem;
+}
+
+.quiz-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  background: rgba(10, 12, 14, 0.74);
+  display: grid;
+  place-items: center;
+  padding: 1.2rem;
+}
+
+.modal-card {
+  width: min(52rem, 100%);
+  border: 0.5px solid var(--color-border);
+  background: var(--color-bg-panel);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.2rem;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+}
+
+.modal-body {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.settings-row {
+  display: grid;
+  grid-template-columns: 16rem minmax(0, 1fr);
+  align-items: center;
+  gap: 0.8rem;
+}
+
+.settings-label {
+  color: var(--color-text-dim);
+  font-size: 1.12rem;
+}
+
+.settings-input {
+  border: 0.5px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text);
+  padding: 0.5rem 0.6rem;
+  font: inherit;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .text-bright {
   color: var(--color-text-bright);
 }
@@ -771,5 +895,9 @@
 
   .sidebar-shell {
     border-left: 0;
+  }
+
+  .settings-row {
+    grid-template-columns: 1fr;
   }
 }

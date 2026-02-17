@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type {
+  AppSettings,
   ChangedFile,
   ChangedFileStatus,
+  DiffPaneMode,
   DiffDetailResponse,
   DiffScope,
   DiffSummaryResponse,
   DiffViewMode,
+  QuizSession,
+  QuizSseEvent,
   RepoSummary,
 } from "@diffx/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -22,12 +26,22 @@ import { getDiffDetail } from "../../services/api/diff";
 import { toUiError } from "../../services/api/error-ui";
 import { getChangedFiles } from "../../services/api/files";
 import { getHealth } from "../../services/api/health";
+import {
+  createQuizSession,
+  getQuizSession,
+  openQuizSessionStream,
+  submitQuizAnswers,
+  validateQuizSession,
+} from "../../services/api/quiz";
 import { getRepoSummary } from "../../services/api/repo";
+import { getSettings, putSettings } from "../../services/api/settings";
 import { queryKeys } from "../../services/query-keys";
 import { DiffPanel } from "../diff/DiffPanel";
+import { QuizPanel } from "../diff/QuizPanel";
 import { NonGitGate } from "../gate/NonGitGate";
 import { SidebarShell } from "../sidebar/SidebarShell";
 import type { SidebarTabId } from "../sidebar/tabRegistry";
+import { SettingsModal } from "./SettingsModal";
 import { StatusBar } from "./StatusBar";
 import { Topbar } from "./Topbar";
 
@@ -44,6 +58,16 @@ type FilesDockMessage = {
 type SelectedFileRef = {
   path: string;
   status: ChangedFileStatus;
+};
+
+const DEFAULT_SETTINGS: AppSettings = {
+  quiz: {
+    gateEnabled: false,
+    questionCount: 4,
+    scope: "staged",
+    validationMode: "answer_all",
+    scoreThreshold: null,
+  },
 };
 
 const STATUS_PRIORITY: Record<ChangedFileStatus, number> = {
@@ -229,13 +253,28 @@ function toSelectedFileRef(file: Pick<ChangedFile, "path" | "status">): Selected
   };
 }
 
+function toLocalFileSignature(files: ChangedFile[]): string {
+  return files
+    .map((file) => `${file.status}:${file.path}:${file.contentHash}`)
+    .sort((left, right) => left.localeCompare(right))
+    .join("|");
+}
+
 export function AppShell({ initialRepo }: AppShellProps) {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<SidebarTabId>("files");
   const [selectedFileRef, setSelectedFileRef] = useState<SelectedFileRef | null>(null);
+  const [paneMode, setPaneMode] = useState<DiffPaneMode>("diff");
   const [viewMode, setViewMode] = useState<DiffViewMode>("split");
   const [filesDockMode, setFilesDockMode] = useState<FilesDockMode>("idle");
   const [filesDockMessage, setFilesDockMessage] = useState<FilesDockMessage>(null);
+  const [commitMessageDraft, setCommitMessageDraft] = useState("");
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [activeQuizSessionId, setActiveQuizSessionId] = useState<string | null>(null);
+  const [quizSessionLocalSignature, setQuizSessionLocalSignature] = useState<string | null>(null);
+  const [quizStreamError, setQuizStreamError] = useState<string | null>(null);
+  const [bypassArmed, setBypassArmed] = useState(false);
+  const [quizUnlockSignature, setQuizUnlockSignature] = useState<string | null>(null);
   const [pendingMutationsByPath, setPendingMutationsByPath] = useState<Map<string, PendingFileMutation>>(
     () => new Map(),
   );
@@ -322,8 +361,27 @@ export function AppShell({ initialRepo }: AppShellProps) {
     retry: 1,
   });
 
+  const settingsQuery = useQuery({
+    queryKey: queryKeys.settings,
+    queryFn: getSettings,
+    placeholderData: (previousData) => previousData ?? DEFAULT_SETTINGS,
+  });
+
+  const settings = settingsQuery.data ?? DEFAULT_SETTINGS;
+  const settingsUiError = settingsQuery.isError ? toUiError(settingsQuery.error) : null;
+
   const files = filesQuery.data ?? [];
   const filesUiError = filesQuery.isError ? toUiError(filesQuery.error) : null;
+  const localFileSignature = useMemo(() => toLocalFileSignature(files), [files]);
+
+  const quizSessionQuery = useQuery({
+    queryKey: activeQuizSessionId ? queryKeys.quizSession(activeQuizSessionId) : ["quizSession", "none"],
+    queryFn: async () => await getQuizSession(activeQuizSessionId!),
+    enabled: Boolean(activeQuizSessionId),
+    placeholderData: (previousData) => previousData,
+  });
+
+  const quizSession = quizSessionQuery.data ?? null;
 
   const selectedFile = useMemo(() => {
     if (!selectedFileRef) {
@@ -368,6 +426,35 @@ export function AppShell({ initialRepo }: AppShellProps) {
 
     setSelectedFileRef(files[0] ? toSelectedFileRef(files[0]) : null);
   }, [files, filesQuery.isFetching, selectedFileRef]);
+
+  useEffect(() => {
+    if (!quizUnlockSignature) {
+      return;
+    }
+
+    if (quizUnlockSignature === localFileSignature) {
+      return;
+    }
+
+    setQuizUnlockSignature(null);
+    setBypassArmed(false);
+    setFilesDockMessage({
+      tone: "info",
+      text: "Repository changed after quiz check. Re-run quiz to unlock commit.",
+    });
+  }, [localFileSignature, quizUnlockSignature]);
+
+  useEffect(() => {
+    if (!bypassArmed || !quizSessionLocalSignature) {
+      return;
+    }
+
+    if (quizSessionLocalSignature === localFileSignature) {
+      return;
+    }
+
+    setBypassArmed(false);
+  }, [bypassArmed, localFileSignature, quizSessionLocalSignature]);
 
   const selectedScope = useMemo(() => toScope(selectedFile), [selectedFile]);
 
@@ -513,6 +600,142 @@ export function AppShell({ initialRepo }: AppShellProps) {
       queryClient.invalidateQueries({ queryKey: queryKeys.health }),
     ]);
   }
+
+  function setQuizSessionCache(session: QuizSession) {
+    queryClient.setQueryData(queryKeys.quizSession(session.id), session);
+  }
+
+  const settingsMutation = useMutation({
+    mutationFn: async (nextSettings: AppSettings) => await putSettings(nextSettings),
+    onMutate: async (nextSettings) => {
+      await queryClient.cancelQueries({ queryKey: queryKeys.settings });
+      const previousSettings = queryClient.getQueryData<AppSettings>(queryKeys.settings);
+      queryClient.setQueryData(queryKeys.settings, nextSettings);
+      return { previousSettings };
+    },
+    onError: (error, _settings, context) => {
+      if (context?.previousSettings) {
+        queryClient.setQueryData(queryKeys.settings, context.previousSettings);
+      }
+
+      setFilesDockMessage({
+        tone: "error",
+        text: toUiError(error, "Unable to save settings.").message,
+      });
+    },
+    onSuccess: (nextSettings) => {
+      queryClient.setQueryData(queryKeys.settings, nextSettings);
+      setSettingsOpen(false);
+    },
+  });
+
+  const createQuizSessionMutation = useMutation({
+    mutationFn: async (params: { commitMessage: string; selectedPath: string | null }) =>
+      await createQuizSession(params),
+    onMutate: () => {
+      setQuizStreamError(null);
+      setFilesDockMessage({
+        tone: "info",
+        text: "Generating quiz. Commit unlocks after validation.",
+      });
+    },
+    onSuccess: (session) => {
+      setQuizSessionCache(session);
+      setActiveQuizSessionId(session.id);
+      setQuizSessionLocalSignature(localFileSignature);
+      setPaneMode("quiz");
+      setBypassArmed(false);
+      setQuizUnlockSignature(null);
+    },
+    onError: (error) => {
+      setQuizStreamError(toUiError(error, "Unable to start quiz session.").message);
+      setFilesDockMessage({
+        tone: "error",
+        text: toUiError(error, "Unable to start quiz session.").message,
+      });
+    },
+  });
+
+  const submitQuizAnswersMutation = useMutation({
+    mutationFn: async (params: { sessionId: string; answers: Record<string, number> }) =>
+      await submitQuizAnswers(params.sessionId, { answers: params.answers }),
+    onSuccess: (session) => {
+      setQuizSessionCache(session);
+    },
+    onError: (error) => {
+      setFilesDockMessage({
+        tone: "error",
+        text: toUiError(error, "Unable to save quiz answers.").message,
+      });
+    },
+  });
+
+  const validateQuizMutation = useMutation({
+    mutationFn: async (params: {
+      sessionId: string;
+      sourceFingerprint: string;
+      localSignature: string;
+    }) =>
+      await validateQuizSession(params.sessionId, {
+        sourceFingerprint: params.sourceFingerprint,
+      }),
+    onSuccess: (session, params) => {
+      setQuizSessionCache(session);
+
+      if (session.status === "validated") {
+        setQuizUnlockSignature(params.localSignature);
+        setFilesDockMessage({
+          tone: "info",
+          text: "Quiz validated. Commit is now unlocked.",
+        });
+        return;
+      }
+
+      setQuizUnlockSignature(null);
+      setFilesDockMessage({
+        tone: "error",
+        text: "Validation did not pass yet. Review quiz answers and try again.",
+      });
+    },
+    onError: (error) => {
+      setQuizUnlockSignature(null);
+      setFilesDockMessage({
+        tone: "error",
+        text: toUiError(error, "Unable to validate quiz.").message,
+      });
+    },
+  });
+
+  useEffect(() => {
+    if (!activeQuizSessionId) {
+      return;
+    }
+
+    setQuizStreamError(null);
+
+    const dispose = openQuizSessionStream(activeQuizSessionId, {
+      onEvent: (event: QuizSseEvent) => {
+        setQuizSessionCache(event.session);
+      },
+      onError: (error) => {
+        setQuizStreamError(error.message);
+      },
+    });
+
+    return () => {
+      dispose();
+    };
+  }, [activeQuizSessionId, queryClient]);
+
+  const quizValidationPassed =
+    quizSession?.status === "validated" &&
+    quizUnlockSignature !== null &&
+    quizUnlockSignature === localFileSignature;
+  const commitBypassActive =
+    bypassArmed &&
+    quizSession?.status === "failed" &&
+    quizSessionLocalSignature === localFileSignature;
+  const quizGateEnabled = settings.quiz.gateEnabled;
 
   const stageMutation = useMutation({
     mutationFn: async (path: string) => await stageFile({ path }),
@@ -721,6 +944,16 @@ export function AppShell({ initialRepo }: AppShellProps) {
     onSuccess: async () => {
       setFilesDockMode("push");
       setFilesDockMessage(null);
+      setCommitMessageDraft("");
+      setPaneMode("diff");
+      setBypassArmed(false);
+      setQuizUnlockSignature(null);
+      setQuizSessionLocalSignature(null);
+      setQuizStreamError(null);
+      if (activeQuizSessionId) {
+        queryClient.removeQueries({ queryKey: queryKeys.quizSession(activeQuizSessionId), exact: true });
+      }
+      setActiveQuizSessionId(null);
       await refreshQueries();
     },
     onError: (error) => {
@@ -799,9 +1032,132 @@ export function AppShell({ initialRepo }: AppShellProps) {
     unstageManyMutation.mutate(acceptedPaths);
   }
 
+  function startOrResumeQuiz(message: string) {
+    const trimmedMessage = message.trim();
+    if (!trimmedMessage) {
+      return;
+    }
+
+    setCommitMessageDraft(trimmedMessage);
+    setPaneMode("quiz");
+    setFilesDockMessage({
+      tone: "info",
+      text: "Quiz validation is required before commit.",
+    });
+
+    if (createQuizSessionMutation.isPending) {
+      return;
+    }
+
+    const canReuseSession =
+      activeQuizSessionId !== null &&
+      quizSession !== null &&
+      quizSessionLocalSignature === localFileSignature &&
+      (quizSession.status === "queued" ||
+        quizSession.status === "streaming" ||
+        quizSession.status === "ready" ||
+        quizSession.status === "validated");
+
+    if (canReuseSession) {
+      return;
+    }
+
+    createQuizSessionMutation.mutate({
+      commitMessage: trimmedMessage,
+      selectedPath: selectedFile?.path ?? null,
+    });
+  }
+
+  function requestQuizAnswer(questionId: string, optionIndex: number) {
+    if (!activeQuizSessionId || !quizSession || !quizSession.quiz) {
+      return;
+    }
+
+    const nextAnswers = {
+      ...quizSession.answers,
+      [questionId]: optionIndex,
+    };
+
+    queryClient.setQueryData<QuizSession>(queryKeys.quizSession(activeQuizSessionId), {
+      ...quizSession,
+      status: quizSession.status === "validated" ? "ready" : quizSession.status,
+      answers: nextAnswers,
+      validation: quizSession.status === "validated" ? null : quizSession.validation,
+    });
+
+    if (quizSession.status === "validated") {
+      setQuizUnlockSignature(null);
+    }
+
+    submitQuizAnswersMutation.mutate({ sessionId: activeQuizSessionId, answers: nextAnswers });
+  }
+
+  function requestQuizValidation() {
+    if (!activeQuizSessionId || !quizSession) {
+      return;
+    }
+
+    validateQuizMutation.mutate({
+      sessionId: activeQuizSessionId,
+      sourceFingerprint: quizSession.sourceFingerprint,
+      localSignature: localFileSignature,
+    });
+  }
+
+  function requestQuizBypass() {
+    setBypassArmed(true);
+    setFilesDockMessage({
+      tone: "info",
+      text: "Bypass armed for one commit attempt.",
+    });
+  }
+
+  function requestQuizRegeneration() {
+    const message = commitMessageDraft.trim();
+    if (!message) {
+      return;
+    }
+
+    setBypassArmed(false);
+    setQuizUnlockSignature(null);
+    createQuizSessionMutation.mutate({
+      commitMessage: message,
+      selectedPath: selectedFile?.path ?? null,
+    });
+  }
+
+  function requestPaneModeChange(mode: DiffPaneMode) {
+    setPaneMode(mode);
+
+    if (mode === "quiz" && !quizSession && commitMessageDraft.trim().length > 0) {
+      startOrResumeQuiz(commitMessageDraft);
+    }
+  }
+
   function requestCommit(message: string) {
+    const trimmedMessage = message.trim();
+    if (!trimmedMessage) {
+      return;
+    }
+
+    setCommitMessageDraft(trimmedMessage);
     setFilesDockMessage(null);
-    commitMutation.mutate(message);
+
+    if (!quizGateEnabled) {
+      commitMutation.mutate(trimmedMessage);
+      return;
+    }
+
+    if (quizValidationPassed || commitBypassActive) {
+      if (commitBypassActive) {
+        setBypassArmed(false);
+      }
+
+      commitMutation.mutate(trimmedMessage);
+      return;
+    }
+
+    startOrResumeQuiz(trimmedMessage);
   }
 
   function requestPush(createUpstream: boolean) {
@@ -813,18 +1169,71 @@ export function AppShell({ initialRepo }: AppShellProps) {
     pushMutation.mutate(createUpstream);
   }
 
+  const trimmedCommitDraft = commitMessageDraft.trim();
+  const commitActionDisabled =
+    trimmedCommitDraft.length === 0 ||
+    repo.stagedCount === 0 ||
+    commitMutation.isPending ||
+    pushMutation.isPending;
+
+  const commitActionLabel = !quizGateEnabled
+    ? "commit"
+    : quizValidationPassed || commitBypassActive
+      ? "commit"
+      : quizSession?.status === "queued" || quizSession?.status === "streaming"
+        ? "resume quiz"
+        : quizSession?.status === "failed"
+          ? "resume quiz"
+          : "start quiz";
+
+  const quizPanel = (
+    <QuizPanel
+      session={quizSession}
+      isLoadingSession={quizSessionQuery.isPending}
+      isCreatingSession={createQuizSessionMutation.isPending}
+      isSubmittingAnswers={submitQuizAnswersMutation.isPending}
+      isValidating={validateQuizMutation.isPending}
+      streamError={quizStreamError}
+      commitUnlocked={quizValidationPassed || commitBypassActive}
+      bypassAvailable={quizGateEnabled && quizSession?.status === "failed"}
+      bypassArmed={bypassArmed}
+      onStartQuiz={() => {
+        if (trimmedCommitDraft.length === 0) {
+          setFilesDockMessage({
+            tone: "error",
+            text: "Enter a commit message in Files tab before starting quiz.",
+          });
+          return;
+        }
+
+        startOrResumeQuiz(trimmedCommitDraft);
+      }}
+      onRegenerateQuiz={requestQuizRegeneration}
+      onSelectAnswer={requestQuizAnswer}
+      onValidateQuiz={requestQuizValidation}
+      onBypassOnce={requestQuizBypass}
+    />
+  );
+
   if (repo.mode === "non-git") {
     return <NonGitGate repoName={repo.repoName} />;
   }
 
   return (
     <div className="app-shell">
-      <Topbar repo={repo} onRefresh={() => void refreshQueries()} />
+      <Topbar
+        repo={repo}
+        onRefresh={() => void refreshQueries()}
+        onOpenSettings={() => setSettingsOpen(true)}
+        quizGateEnabled={settings.quiz.gateEnabled}
+      />
 
       <main className="workspace">
         <DiffPanel
           selectedFile={selectedFile}
           fileChangeCountLabel={fileChangeCountLabel}
+          paneMode={paneMode}
+          onPaneModeChange={requestPaneModeChange}
           viewMode={viewMode}
           onViewModeChange={setViewMode}
           onPreviousFile={() => {
@@ -838,6 +1247,7 @@ export function AppShell({ initialRepo }: AppShellProps) {
           canGoPrevious={canGoPrevious}
           canGoNext={canGoNext}
           diffQuery={diffDetailQuery}
+          quizPanel={quizPanel}
         />
 
         <SidebarShell
@@ -854,6 +1264,12 @@ export function AppShell({ initialRepo }: AppShellProps) {
           filesDockMessage={filesDockMessage}
           isCommitting={commitMutation.isPending}
           isPushing={pushMutation.isPending}
+          commitMessage={commitMessageDraft}
+          commitActionLabel={commitActionLabel}
+          commitActionDisabled={commitActionDisabled}
+          onCommitMessageChange={(message) => {
+            setCommitMessageDraft(message);
+          }}
           onRetryFiles={() => {
             void filesQuery.refetch();
           }}
@@ -868,6 +1284,21 @@ export function AppShell({ initialRepo }: AppShellProps) {
           onPushChanges={requestPush}
         />
       </main>
+
+      <SettingsModal
+        open={settingsOpen}
+        settings={settings}
+        isSaving={settingsMutation.isPending}
+        error={
+          settingsMutation.isError
+            ? toUiError(settingsMutation.error, "Unable to save settings.").message
+            : (settingsUiError?.message ?? null)
+        }
+        onClose={() => setSettingsOpen(false)}
+        onSave={(nextSettings) => {
+          settingsMutation.mutate(nextSettings);
+        }}
+      />
 
       <StatusBar
         connected={!healthQuery.isError && healthQuery.data?.ok === true}

@@ -1,34 +1,57 @@
-import type { DiffViewMode } from "@diffx/contracts";
+import type { DiffPaneMode, DiffViewMode } from "@diffx/contracts";
 
 type DiffToolbarProps = {
+  paneMode: DiffPaneMode;
+  onPaneModeChange: (mode: DiffPaneMode) => void;
   viewMode: DiffViewMode;
   onViewModeChange: (mode: DiffViewMode) => void;
 };
 
 export function DiffToolbar({
+  paneMode,
+  onPaneModeChange,
   viewMode,
   onViewModeChange,
 }: DiffToolbarProps) {
   return (
     <div className="diff-toolbar">
-      <div className="diff-toolbar-spacer" />
-
-      <div className="diff-toolbar-group diff-mode-switch">
+      <div className="diff-toolbar-group diff-pane-switch">
         <button
-          className={viewMode === "split" ? "hud-button hud-button-active" : "hud-button"}
+          className={paneMode === "diff" ? "hud-button hud-button-active" : "hud-button"}
           type="button"
-          onClick={() => onViewModeChange("split")}
+          onClick={() => onPaneModeChange("diff")}
         >
-          split
+          diff
         </button>
         <button
-          className={viewMode === "unified" ? "hud-button hud-button-active" : "hud-button"}
+          className={paneMode === "quiz" ? "hud-button hud-button-active" : "hud-button"}
           type="button"
-          onClick={() => onViewModeChange("unified")}
+          onClick={() => onPaneModeChange("quiz")}
         >
-          unified
+          quiz
         </button>
       </div>
+
+      <div className="diff-toolbar-spacer" />
+
+      {paneMode === "diff" ? (
+        <div className="diff-toolbar-group diff-mode-switch">
+          <button
+            className={viewMode === "split" ? "hud-button hud-button-active" : "hud-button"}
+            type="button"
+            onClick={() => onViewModeChange("split")}
+          >
+            split
+          </button>
+          <button
+            className={viewMode === "unified" ? "hud-button hud-button-active" : "hud-button"}
+            type="button"
+            onClick={() => onViewModeChange("unified")}
+          >
+            unified
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

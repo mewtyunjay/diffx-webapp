@@ -16,7 +16,15 @@ import { ApiRequestError } from "./services/api/client";
 import { getDiffDetail, getDiffSummary } from "./services/api/diff";
 import { getChangedFiles } from "./services/api/files";
 import { getHealth } from "./services/api/health";
+import {
+  createQuizSession,
+  getQuizSession,
+  openQuizSessionStream,
+  submitQuizAnswers,
+  validateQuizSession,
+} from "./services/api/quiz";
 import { getRepoSummary } from "./services/api/repo";
+import { getSettings, putSettings } from "./services/api/settings";
 
 vi.mock("./services/api/repo", () => ({
   getRepoSummary: vi.fn(),
@@ -33,6 +41,19 @@ vi.mock("./services/api/diff", () => ({
 
 vi.mock("./services/api/health", () => ({
   getHealth: vi.fn(),
+}));
+
+vi.mock("./services/api/settings", () => ({
+  getSettings: vi.fn(),
+  putSettings: vi.fn(),
+}));
+
+vi.mock("./services/api/quiz", () => ({
+  createQuizSession: vi.fn(),
+  getQuizSession: vi.fn(),
+  openQuizSessionStream: vi.fn(() => () => undefined),
+  submitQuizAnswers: vi.fn(),
+  validateQuizSession: vi.fn(),
 }));
 
 vi.mock("./services/api/actions", () => ({
@@ -62,6 +83,13 @@ describe("App", () => {
   const getDiffSummaryMock = vi.mocked(getDiffSummary);
   const getDiffDetailMock = vi.mocked(getDiffDetail);
   const getHealthMock = vi.mocked(getHealth);
+  const getSettingsMock = vi.mocked(getSettings);
+  const putSettingsMock = vi.mocked(putSettings);
+  const createQuizSessionMock = vi.mocked(createQuizSession);
+  const getQuizSessionMock = vi.mocked(getQuizSession);
+  const openQuizSessionStreamMock = vi.mocked(openQuizSessionStream);
+  const submitQuizAnswersMock = vi.mocked(submitQuizAnswers);
+  const validateQuizSessionMock = vi.mocked(validateQuizSession);
   const stageFileMock = vi.mocked(stageFile);
   const stageManyFilesMock = vi.mocked(stageManyFiles);
   const unstageFileMock = vi.mocked(unstageFile);
@@ -94,6 +122,106 @@ describe("App", () => {
     };
   }
 
+  function buildDefaultSettings() {
+    return {
+      quiz: {
+        gateEnabled: false,
+        questionCount: 4,
+        scope: "staged" as const,
+        validationMode: "answer_all" as const,
+        scoreThreshold: null,
+      },
+    };
+  }
+
+  function buildQuizSession(status: "queued" | "ready" | "validated") {
+    const base = {
+      id: "quiz-session-1",
+      sourceFingerprint: "source-fingerprint",
+      commitMessageDraft: "ship files dock",
+      selectedPath: "frontend/src/App.tsx",
+      createdAt: "2026-02-17T00:00:00.000Z",
+      updatedAt: "2026-02-17T00:00:00.000Z",
+      progress: {
+        phase: status === "queued" ? "queued" : "validating",
+        percent: status === "queued" ? 0 : 100,
+        message: status === "queued" ? "Session queued." : "Quiz is ready.",
+      },
+      quiz:
+        status === "queued"
+          ? null
+          : {
+              title: "Commit readiness quiz",
+              generatedAt: "2026-02-17T00:00:00.000Z",
+              questions: [
+                {
+                  id: "q-1",
+                  prompt: "Question 1",
+                  snippet: null,
+                  options: ["A", "B", "C", "D"] as [string, string, string, string],
+                  correctOptionIndex: 0,
+                  explanation: null,
+                  tags: [],
+                },
+                {
+                  id: "q-2",
+                  prompt: "Question 2",
+                  snippet: null,
+                  options: ["A", "B", "C", "D"] as [string, string, string, string],
+                  correctOptionIndex: 1,
+                  explanation: null,
+                  tags: [],
+                },
+                {
+                  id: "q-3",
+                  prompt: "Question 3",
+                  snippet: null,
+                  options: ["A", "B", "C", "D"] as [string, string, string, string],
+                  correctOptionIndex: 2,
+                  explanation: null,
+                  tags: [],
+                },
+                {
+                  id: "q-4",
+                  prompt: "Question 4",
+                  snippet: null,
+                  options: ["A", "B", "C", "D"] as [string, string, string, string],
+                  correctOptionIndex: 3,
+                  explanation: null,
+                  tags: [],
+                },
+              ],
+            },
+      answers:
+        status === "queued"
+          ? {}
+          : {
+              "q-1": 0,
+              "q-2": 1,
+              "q-3": 2,
+              "q-4": 3,
+            },
+      validation:
+        status === "validated"
+          ? {
+              mode: "answer_all" as const,
+              passed: true,
+              answeredCount: 4,
+              correctCount: 4,
+              totalQuestions: 4,
+              score: 1,
+              scoreThreshold: null,
+            }
+          : null,
+      failure: null,
+    };
+
+    return {
+      ...base,
+      status,
+    };
+  }
+
   beforeEach(() => {
     vi.resetAllMocks();
     stageFileMock.mockResolvedValue({ ok: true, message: "Staged file" });
@@ -102,6 +230,13 @@ describe("App", () => {
     unstageManyFilesMock.mockResolvedValue({ ok: true, message: "Unstaged files" });
     commitChangesMock.mockResolvedValue({ ok: true, message: "Committed" });
     pushChangesMock.mockResolvedValue({ ok: true, message: "Pushed" });
+    getSettingsMock.mockResolvedValue(buildDefaultSettings());
+    putSettingsMock.mockResolvedValue(buildDefaultSettings());
+    createQuizSessionMock.mockReset();
+    getQuizSessionMock.mockReset();
+    openQuizSessionStreamMock.mockReturnValue(() => undefined);
+    submitQuizAnswersMock.mockReset();
+    validateQuizSessionMock.mockReset();
 
     getDiffDetailMock.mockResolvedValue({
       mode: "git",
@@ -683,6 +818,77 @@ describe("App", () => {
 
     await waitFor(() => {
       expect(pushChangesMock).toHaveBeenLastCalledWith({ createUpstream: true });
+    });
+  });
+
+  it("gates commit behind quiz validation and unlocks manual commit", async () => {
+    getRepoSummaryMock.mockResolvedValue(buildGitRepoSummary({ stagedCount: 1 }));
+    getSettingsMock.mockResolvedValue({
+      quiz: {
+        gateEnabled: true,
+        questionCount: 4,
+        scope: "staged",
+        validationMode: "answer_all",
+        scoreThreshold: null,
+      },
+    });
+
+    getChangedFilesMock.mockResolvedValue([
+      { path: "frontend/src/App.tsx", status: "staged", contentHash: "hash-frontend-app" },
+    ]);
+
+    getDiffDetailMock.mockResolvedValue({
+      mode: "git",
+      file: {
+        path: "frontend/src/App.tsx",
+        oldPath: "frontend/src/App.tsx",
+        newPath: "frontend/src/App.tsx",
+        languageHint: "tsx",
+        isBinary: false,
+        tooLarge: false,
+        patch: "",
+        stats: { additions: 0, deletions: 0, hunks: 0 },
+      },
+      old: { file: { name: "frontend/src/App.tsx", contents: "" }, isBinary: false, tooLarge: false, error: false },
+      new: { file: { name: "frontend/src/App.tsx", contents: "" }, isBinary: false, tooLarge: false, error: false },
+    });
+
+    getHealthMock.mockResolvedValue({ ok: true });
+
+    createQuizSessionMock.mockResolvedValue(buildQuizSession("queued"));
+    getQuizSessionMock.mockResolvedValue(buildQuizSession("ready"));
+    validateQuizSessionMock.mockResolvedValue(buildQuizSession("validated"));
+
+    renderWithQueryClient();
+
+    const messageBox = await screen.findByPlaceholderText("describe why this change exists");
+    fireEvent.change(messageBox, { target: { value: "ship files dock" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "start quiz" }));
+
+    await waitFor(() => {
+      expect(createQuizSessionMock).toHaveBeenCalledWith({
+        commitMessage: "ship files dock",
+        selectedPath: "frontend/src/App.tsx",
+      });
+    });
+
+    expect(commitChangesMock).not.toHaveBeenCalled();
+
+    await screen.findByText("Question 1");
+    fireEvent.click(screen.getByRole("button", { name: "validate quiz" }));
+
+    await waitFor(() => {
+      expect(validateQuizSessionMock).toHaveBeenCalledWith("quiz-session-1", {
+        sourceFingerprint: "source-fingerprint",
+      });
+    });
+
+    const commitButton = await screen.findByRole("button", { name: "commit" });
+    fireEvent.click(commitButton);
+
+    await waitFor(() => {
+      expect(commitChangesMock).toHaveBeenCalledWith({ message: "ship files dock" });
     });
   });
 });

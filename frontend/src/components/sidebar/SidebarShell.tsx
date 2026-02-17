@@ -17,6 +17,10 @@ type SidebarShellProps = {
   filesDockMessage: FilesDockMessage;
   isCommitting: boolean;
   isPushing: boolean;
+  commitMessage: string;
+  commitActionLabel?: string;
+  commitActionDisabled?: boolean;
+  onCommitMessageChange: (message: string) => void;
   onRetryFiles: () => void;
   onSelectFile: (file: ChangedFile) => void;
   onStageFile: (path: string) => void;
@@ -41,6 +45,10 @@ export function SidebarShell({
   filesDockMessage,
   isCommitting,
   isPushing,
+  commitMessage,
+  commitActionLabel,
+  commitActionDisabled,
+  onCommitMessageChange,
   onRetryFiles,
   onSelectFile,
   onStageFile,
@@ -96,6 +104,10 @@ export function SidebarShell({
                 dockMessage={filesDockMessage}
                 isCommitting={isCommitting}
                 isPushing={isPushing}
+                commitMessage={commitMessage}
+                commitActionLabel={commitActionLabel}
+                commitActionDisabled={commitActionDisabled}
+                onCommitMessageChange={onCommitMessageChange}
                 onCommitChanges={onCommitChanges}
                 onPushChanges={onPushChanges}
               />

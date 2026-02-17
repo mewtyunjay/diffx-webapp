@@ -3,9 +3,11 @@ import type { RepoSummary } from "@diffx/contracts";
 type TopbarProps = {
   repo: RepoSummary;
   onRefresh: () => void;
+  onOpenSettings: () => void;
+  quizGateEnabled: boolean;
 };
 
-export function Topbar({ repo, onRefresh }: TopbarProps) {
+export function Topbar({ repo, onRefresh, onOpenSettings, quizGateEnabled }: TopbarProps) {
   return (
     <header className="topbar">
       <div className="topbar-left">
@@ -18,8 +20,12 @@ export function Topbar({ repo, onRefresh }: TopbarProps) {
       </div>
 
       <div className="topbar-right">
+        <span className="chip">quiz gate:{quizGateEnabled ? "on" : "off"}</span>
         <button className="hud-button" type="button" onClick={onRefresh}>
           refresh
+        </button>
+        <button className="hud-button" type="button" onClick={onOpenSettings}>
+          settings
         </button>
       </div>
     </header>

@@ -3,6 +3,7 @@ import type { DiffScope, DiffSide } from "@diffx/contracts";
 export const queryKeys = {
   health: ["health"] as const,
   repo: ["repo"] as const,
+  settings: ["settings"] as const,
   filesRoot: ["files"] as const,
   files: ["files"] as const,
   branches: ["branches"] as const,
@@ -14,4 +15,6 @@ export const queryKeys = {
     ["diffDetail", path, contextLines, contentHash] as const,
   fileContents: (path: string, scope: DiffScope, side: DiffSide) =>
     ["fileContents", path, scope, side] as const,
+  quizSessionRoot: ["quizSession"] as const,
+  quizSession: (sessionId: string) => ["quizSession", sessionId] as const,
 };

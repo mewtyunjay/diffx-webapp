@@ -10,6 +10,8 @@ import diffDetailRoute from "./routes/diff-detail.route.js";
 import fileContentsRoute from "./routes/file-contents.route.js";
 import actionsRoute from "./routes/actions.route.js";
 import branchesRoute from "./routes/branches.route.js";
+import settingsRoute from "./routes/settings.route.js";
+import quizRoute from "./routes/quiz.route.js";
 
 export function createApp() {
   const app = express();
@@ -25,6 +27,8 @@ export function createApp() {
   app.use("/api", fileContentsRoute);
   app.use("/api", actionsRoute);
   app.use("/api", branchesRoute);
+  app.use("/api", settingsRoute);
+  app.use("/api", quizRoute);
 
   return app;
 }

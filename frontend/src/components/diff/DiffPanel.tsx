@@ -2,6 +2,7 @@ import { useMemo, type ReactNode } from "react";
 import type { FileContents as PierreFileContents } from "@pierre/diffs";
 import type {
   ChangedFile,
+  DiffPaneMode,
   DiffDetailResponse,
   DiffViewMode,
 } from "@diffx/contracts";
@@ -14,6 +15,8 @@ import { PierreDiffRenderer } from "./PierreDiffRenderer";
 type DiffPanelProps = {
   selectedFile: ChangedFile | null;
   fileChangeCountLabel: string;
+  paneMode: DiffPaneMode;
+  onPaneModeChange: (mode: DiffPaneMode) => void;
   viewMode: DiffViewMode;
   onViewModeChange: (mode: DiffViewMode) => void;
   onPreviousFile: () => void;
@@ -21,6 +24,7 @@ type DiffPanelProps = {
   canGoPrevious: boolean;
   canGoNext: boolean;
   diffQuery: UseQueryResult<DiffDetailResponse, Error>;
+  quizPanel: ReactNode;
 };
 
 function toPierreFile(name: string, contents: string): PierreFileContents {
@@ -33,6 +37,8 @@ function toPierreFile(name: string, contents: string): PierreFileContents {
 export function DiffPanel({
   selectedFile,
   fileChangeCountLabel,
+  paneMode,
+  onPaneModeChange,
   viewMode,
   onViewModeChange,
   onPreviousFile,
@@ -40,6 +46,7 @@ export function DiffPanel({
   canGoPrevious,
   canGoNext,
   diffQuery,
+  quizPanel,
 }: DiffPanelProps) {
   const diffFile = diffQuery.data?.file;
 
@@ -68,10 +75,29 @@ export function DiffPanel({
     diffQuery.data?.new.tooLarge === true ||
     diffQuery.data?.new.error === true;
 
+  if (paneMode === "quiz") {
+    return (
+      <section className="diff-panel">
+        <DiffToolbar
+          paneMode={paneMode}
+          onPaneModeChange={onPaneModeChange}
+          viewMode={viewMode}
+          onViewModeChange={onViewModeChange}
+        />
+        <div className="diff-content">{quizPanel}</div>
+      </section>
+    );
+  }
+
   if (!selectedFile) {
     return (
       <section className="diff-panel">
-        <DiffToolbar viewMode={viewMode} onViewModeChange={onViewModeChange} />
+        <DiffToolbar
+          paneMode={paneMode}
+          onPaneModeChange={onPaneModeChange}
+          viewMode={viewMode}
+          onViewModeChange={onViewModeChange}
+        />
         <div className="diff-content">
           <p className="empty-state">Select a file in the sidebar to view its diff.</p>
         </div>
@@ -127,7 +153,12 @@ export function DiffPanel({
 
   return (
     <section className="diff-panel">
-      <DiffToolbar viewMode={viewMode} onViewModeChange={onViewModeChange} />
+      <DiffToolbar
+        paneMode={paneMode}
+        onPaneModeChange={onPaneModeChange}
+        viewMode={viewMode}
+        onViewModeChange={onViewModeChange}
+      />
 
       {diffFile ? (
         <DiffFileHeader

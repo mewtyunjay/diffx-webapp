@@ -16,6 +16,10 @@ function renderFilesTab(options?: {
   dockMessage?: FilesDockMessage;
   isCommitting?: boolean;
   isPushing?: boolean;
+  commitMessage?: string;
+  commitActionLabel?: string;
+  commitActionDisabled?: boolean;
+  onCommitMessageChange?: (message: string) => void;
   onCommitChanges?: (message: string) => void;
   onPushChanges?: (createUpstream: boolean) => void;
 }) {
@@ -24,6 +28,7 @@ function renderFilesTab(options?: {
   const onUnstageFile = options?.onUnstageFile ?? vi.fn();
   const onStageFiles = options?.onStageFiles ?? vi.fn();
   const onUnstageFiles = options?.onUnstageFiles ?? vi.fn();
+  const onCommitMessageChange = options?.onCommitMessageChange ?? vi.fn();
   const onCommitChanges = options?.onCommitChanges ?? vi.fn();
   const onPushChanges = options?.onPushChanges ?? vi.fn();
   const files = options?.files ?? [
@@ -62,6 +67,10 @@ function renderFilesTab(options?: {
       dockMessage={options?.dockMessage ?? null}
       isCommitting={options?.isCommitting ?? false}
       isPushing={options?.isPushing ?? false}
+      commitMessage={options?.commitMessage ?? ""}
+      commitActionLabel={options?.commitActionLabel}
+      commitActionDisabled={options?.commitActionDisabled}
+      onCommitMessageChange={onCommitMessageChange}
       onCommitChanges={onCommitChanges}
       onPushChanges={onPushChanges}
     />,
@@ -73,6 +82,7 @@ function renderFilesTab(options?: {
     onUnstageFile,
     onStageFiles,
     onUnstageFiles,
+    onCommitMessageChange,
     onCommitChanges,
     onPushChanges,
   };
@@ -173,15 +183,25 @@ describe("FilesTab row actions", () => {
   it("shows a one-line commit dock and submits trimmed message", () => {
     const onCommitChanges = vi.fn();
 
-    renderFilesTab({ onCommitChanges, stagedCount: 1 });
+    renderFilesTab({ onCommitChanges, stagedCount: 1, commitMessage: "  tidy files tab flow  " });
 
     const input = screen.getByPlaceholderText("describe why this change exists");
     expect(input).toHaveAttribute("rows", "2");
-
-    fireEvent.change(input, { target: { value: "  tidy files tab flow  " } });
     fireEvent.click(screen.getByRole("button", { name: "commit" }));
 
     expect(onCommitChanges).toHaveBeenCalledWith("tidy files tab flow");
+  });
+
+  it("emits commit message changes via callback", () => {
+    const onCommitMessageChange = vi.fn();
+
+    renderFilesTab({ onCommitMessageChange });
+
+    fireEvent.change(screen.getByPlaceholderText("describe why this change exists"), {
+      target: { value: "hello quiz" },
+    });
+
+    expect(onCommitMessageChange).toHaveBeenCalledWith("hello quiz");
   });
 
   it("switches dock action to push and triggers push callback", () => {

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import type { ChangedFile, ChangedFileStatus } from "@diffx/contracts";
 import { DiffStatBadge } from "./DiffStatBadge";
 
@@ -23,6 +23,10 @@ type FilesTabProps = {
   dockMessage: FilesDockMessage;
   isCommitting: boolean;
   isPushing: boolean;
+  commitMessage: string;
+  commitActionLabel?: string;
+  commitActionDisabled?: boolean;
+  onCommitMessageChange: (message: string) => void;
   onCommitChanges: (message: string) => void;
   onPushChanges: (createUpstream: boolean) => void;
 };
@@ -130,11 +134,13 @@ export function FilesTab({
   dockMessage,
   isCommitting,
   isPushing,
+  commitMessage,
+  commitActionLabel,
+  commitActionDisabled,
+  onCommitMessageChange,
   onCommitChanges,
   onPushChanges,
 }: FilesTabProps) {
-  const [commitMessage, setCommitMessage] = useState("");
-
   const statsByFile = useMemo(() => {
     const map = new Map<string, { additions: number | null; deletions: number | null } | null>();
 
@@ -158,7 +164,7 @@ export function FilesTab({
   const isCommitAction = dockAction === "commit";
   const canCommit = trimmedCommitMessage.length > 0 && stagedCount > 0 && !isCommitting && !isPushing;
   const canPush = !isCommitting && !isPushing;
-  const actionDisabled = isCommitAction ? !canCommit : !canPush;
+  const actionDisabled = isCommitAction ? (commitActionDisabled ?? !canCommit) : !canPush;
 
   const actionLabel = isCommitting
     ? "committing..."
@@ -166,6 +172,8 @@ export function FilesTab({
       ? dockAction === "create-upstream"
         ? "creating upstream..."
         : "pushing..."
+      : isCommitAction
+        ? (commitActionLabel ?? "commit")
       : dockAction === "create-upstream"
         ? "create upstream + push"
         : dockAction;
@@ -276,7 +284,7 @@ export function FilesTab({
               className="files-commit-input"
               rows={2}
               value={commitMessage}
-              onChange={(event) => setCommitMessage(event.target.value)}
+              onChange={(event) => onCommitMessageChange(event.target.value)}
               placeholder="describe why this change exists"
             />
           ) : (
@@ -290,7 +298,6 @@ export function FilesTab({
             onClick={() => {
               if (isCommitAction) {
                 onCommitChanges(trimmedCommitMessage);
-                setCommitMessage("");
                 return;
               }
 
