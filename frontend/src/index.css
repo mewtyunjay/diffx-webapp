@@ -16,6 +16,14 @@
   --color-diff-del-bg: rgba(184, 72, 72, 0.08);
   --color-diff-del-marker: rgba(184, 72, 72, 0.3);
   --color-diff-chunk-bg: rgba(90, 154, 184, 0.05);
+  --font-size-micro: 0.9rem;
+  --font-size-label: 0.98rem;
+  --font-size-control: 1.08rem;
+  --font-size-body: 1.12rem;
+  --font-size-body-strong: 1.18rem;
+  --font-size-title: 1.24rem;
+  --font-size-heading: 1.32rem;
+  --font-size-display: 1.92rem;
   font-family: "JetBrains Mono", "SF Mono", Consolas, monospace;
   font-size: 11px;
   letter-spacing: 0.05em;
@@ -37,7 +45,7 @@ body {
   min-width: 320px;
   background: var(--color-bg);
   color: var(--color-text);
-  font-size: 1.2rem;
+  font-size: var(--font-size-body);
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;

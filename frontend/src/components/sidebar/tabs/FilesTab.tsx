@@ -285,7 +285,7 @@ export function FilesTab({
               rows={2}
               value={commitMessage}
               onChange={(event) => onCommitMessageChange(event.target.value)}
-              placeholder="Commit Message..."
+              placeholder="commit message..."
             />
           ) : (
             <p className="inline-note files-commit-status">{dockInfo}</p>

@@ -1,5 +1,5 @@
 .app-shell {
-  --workspace-toolbar-height: 5.4rem;
+  --workspace-toolbar-height: 4.2rem;
   display: grid;
   grid-template-rows: 5.4rem minmax(0, 1fr) 3.2rem;
   height: 100dvh;
@@ -35,13 +35,13 @@
 
 .wordmark {
   color: var(--color-text-bright);
-  font-size: 1.25rem;
+  font-size: var(--font-size-body-strong);
   letter-spacing: 0.2em;
 }
 
 .repo-name {
   color: var(--color-text-bright);
-  font-size: 1.35rem;
+  font-size: var(--font-size-title);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -51,7 +51,7 @@
   border: 0.5px solid var(--color-border);
   color: var(--color-text-dim);
   padding: 0.55rem 0.8rem;
-  font-size: 1.2rem;
+  font-size: var(--font-size-control);
   white-space: nowrap;
 }
 
@@ -135,7 +135,7 @@
   border: 0.5px solid var(--color-border);
   background: rgba(122, 155, 168, 0.08);
   color: var(--color-text-bright);
-  font-size: 1rem;
+  font-size: var(--font-size-label);
   letter-spacing: 0.12em;
   text-transform: uppercase;
 }
@@ -147,7 +147,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--color-text-bright);
-  font-size: 1.28rem;
+  font-size: var(--font-size-title);
 }
 
 .diff-file-stats {
@@ -157,7 +157,7 @@
   border: 0;
   background: transparent;
   padding: 0;
-  font-size: 1.32rem;
+  font-size: var(--font-size-body-strong);
   letter-spacing: 0;
   font-variant-numeric: tabular-nums;
   flex-shrink: 0;
@@ -173,7 +173,7 @@
 
 .diff-file-count {
   color: var(--color-text-dim);
-  font-size: 1.03rem;
+  font-size: var(--font-size-label);
   font-weight: 700;
   letter-spacing: 0.08em;
   font-variant-numeric: tabular-nums;
@@ -188,7 +188,7 @@
 
 .hud-button-compact {
   padding: 0.26rem 0.46rem;
-  font-size: 0.82rem;
+  font-size: var(--font-size-micro);
   letter-spacing: 0.08em;
 }
 
@@ -212,7 +212,7 @@
 .diff-nav-glyph {
   display: block;
   color: var(--color-text-bright);
-  font-size: 1.02rem;
+  font-size: var(--font-size-label);
   letter-spacing: 0;
   line-height: 1;
   transform: scaleX(0.78);
@@ -236,7 +236,7 @@
   background: transparent;
   color: var(--color-text);
   padding: 0.75rem 1.1rem;
-  font-size: 1.2rem;
+  font-size: var(--font-size-control);
   text-transform: uppercase;
   letter-spacing: 0.14em;
   cursor: pointer;
@@ -335,7 +335,7 @@
   border: 0.5px solid var(--color-border);
   background: rgba(13, 16, 18, 0.8);
   color: var(--color-text);
-  font-size: 1.1rem;
+  font-size: var(--font-size-body);
 }
 
 .sidebar-shell {
@@ -361,10 +361,10 @@
   background: transparent;
   color: var(--color-text-dim);
   height: 100%;
-  font-size: 1.25rem;
+  font-size: var(--font-size-control);
   cursor: pointer;
   text-transform: uppercase;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.14em;
 }
 
 .hud-tab:last-child {
@@ -435,6 +435,7 @@
   max-height: 4.6rem;
   resize: none;
   font: inherit;
+  font-size: var(--font-size-body);
 }
 
 .files-commit-input::placeholder {
@@ -471,7 +472,7 @@
   background: transparent;
   color: var(--color-text-dim);
   padding: 0.22rem 0.42rem;
-  font-size: 0.82rem;
+  font-size: var(--font-size-micro);
   text-transform: uppercase;
   letter-spacing: 0.1em;
   cursor: pointer;
@@ -525,7 +526,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 1.32rem;
+  font-size: var(--font-size-body-strong);
 }
 
 .file-row-main {
@@ -552,7 +553,7 @@
   background: transparent;
   color: var(--color-text);
   padding: 0.24rem 0.5rem;
-  font-size: 0.9rem;
+  font-size: var(--font-size-micro);
   text-transform: uppercase;
   letter-spacing: 0.1em;
   cursor: pointer;
@@ -573,7 +574,7 @@
   border: 0.5px solid var(--color-border);
   color: var(--color-text-dim);
   padding: 0.22rem 0.46rem;
-  font-size: 0.84rem;
+  font-size: var(--font-size-micro);
   text-transform: uppercase;
   letter-spacing: 0.1em;
   flex-shrink: 0;
@@ -594,7 +595,7 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   width: 100%;
-  font-size: 0.94rem;
+  font-size: var(--font-size-micro);
   letter-spacing: 0;
   font-variant-numeric: tabular-nums;
 }
@@ -632,7 +633,7 @@
 .selection-value {
   color: var(--color-text-bright);
   margin: 0;
-  font-size: 1.32rem;
+  font-size: var(--font-size-body-strong);
   word-break: break-all;
 }
 
@@ -644,7 +645,7 @@
   border-top: 0.5px solid var(--color-line);
   background: var(--color-bg-panel);
   padding: 0 1.2rem;
-  font-size: 1.15rem;
+  font-size: var(--font-size-body);
   color: var(--color-text-dim);
 }
 
@@ -682,7 +683,7 @@
 
 .hud-label {
   margin: 0;
-  font-size: 1rem;
+  font-size: var(--font-size-label);
   color: var(--color-text-dim);
   text-transform: uppercase;
   letter-spacing: 0.16em;
@@ -692,7 +693,7 @@
 .empty-state,
 .error-note {
   margin: 0;
-  font-size: 1.18rem;
+  font-size: var(--font-size-body);
   color: var(--color-text-dim);
 }
 
@@ -738,7 +739,7 @@
 .quiz-headline {
   margin: 0;
   color: var(--color-text-bright);
-  font-size: 1.42rem;
+  font-size: var(--font-size-heading);
   line-height: 1.35;
 }
 
@@ -761,7 +762,7 @@
 .quiz-preflight-value {
   margin: 0;
   color: var(--color-text-bright);
-  font-size: 1.16rem;
+  font-size: var(--font-size-body-strong);
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
@@ -807,7 +808,7 @@
   background: rgba(122, 155, 168, 0.09);
   color: var(--color-text-bright);
   padding: 0.38rem 0.62rem;
-  font-size: 1rem;
+  font-size: var(--font-size-label);
   text-transform: uppercase;
   letter-spacing: 0.12em;
 }
@@ -829,7 +830,7 @@
 
 .quiz-prompt {
   margin: 0;
-  font-size: 1.24rem;
+  font-size: var(--font-size-title);
   color: var(--color-text-bright);
 }
 
@@ -840,7 +841,7 @@
   padding: 0.8rem;
   white-space: pre-wrap;
   word-break: break-word;
-  font-size: 1.05rem;
+  font-size: var(--font-size-body);
 }
 
 .quiz-options {
@@ -898,7 +899,7 @@
   justify-content: center;
   border: 0.5px solid var(--color-border);
   background: rgba(10, 12, 14, 0.66);
-  font-size: 1rem;
+  font-size: var(--font-size-label);
   text-transform: uppercase;
   flex-shrink: 0;
 }
@@ -910,7 +911,7 @@
 
 .quiz-answer-feedback {
   margin: 0;
-  font-size: 1.05rem;
+  font-size: var(--font-size-label);
   text-transform: uppercase;
   letter-spacing: 0.1em;
 }
@@ -940,7 +941,7 @@
 
 .quiz-score-value {
   margin: 0;
-  font-size: 1.12rem;
+  font-size: var(--font-size-body);
   text-transform: uppercase;
   letter-spacing: 0.1em;
 }
@@ -996,7 +997,7 @@
 
 .settings-label {
   color: var(--color-text-dim);
-  font-size: 1.12rem;
+  font-size: var(--font-size-body);
 }
 
 .settings-row-block {
@@ -1016,7 +1017,7 @@
   cursor: pointer;
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  font-size: 1rem;
+  font-size: var(--font-size-label);
 }
 
 .settings-switch-track {
@@ -1074,7 +1075,7 @@
   cursor: pointer;
   text-transform: uppercase;
   letter-spacing: 0.11em;
-  font-size: 0.98rem;
+  font-size: var(--font-size-label);
 }
 
 .settings-segment-button:last-child {
@@ -1131,14 +1132,14 @@
 
 .gate-card h1 {
   margin: 1rem 0;
-  font-size: 2.2rem;
+  font-size: var(--font-size-display);
   font-weight: 400;
   color: var(--color-text-bright);
 }
 
 .gate-card p {
   margin: 0;
-  font-size: 1.3rem;
+  font-size: var(--font-size-body-strong);
   color: var(--color-text);
 }
 
