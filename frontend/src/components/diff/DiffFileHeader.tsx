@@ -58,8 +58,8 @@ export function DiffFileHeader({
           <span className="diff-file-name">{resolvedPath}</span>
 
           <div className="diff-file-stats">
-            <span className="diff-file-del">{formatDeletions(deletions)}</span>
             <span className="diff-file-add">{formatAdditions(additions)}</span>
+            <span className="diff-file-del">{formatDeletions(deletions)}</span>
           </div>
         </div>
       </div>
