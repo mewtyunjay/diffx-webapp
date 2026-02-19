@@ -21,6 +21,7 @@ describe("/api/settings", () => {
         scope: "staged",
         validationMode: "answer_all",
         scoreThreshold: null,
+        providerPreference: "auto",
       },
     });
   });
@@ -35,6 +36,7 @@ describe("/api/settings", () => {
         scope: "staged",
         validationMode: "answer_all",
         scoreThreshold: 2,
+        providerPreference: "auto",
       },
     });
 
@@ -54,6 +56,7 @@ describe("/api/settings", () => {
         scope: "all_changes",
         validationMode: "score_threshold",
         scoreThreshold: 3,
+        providerPreference: "claude",
       },
     });
 
@@ -69,6 +72,7 @@ describe("/api/settings", () => {
         scope: "all_changes",
         validationMode: "score_threshold",
         scoreThreshold: 3,
+        providerPreference: "claude",
       },
     });
   });

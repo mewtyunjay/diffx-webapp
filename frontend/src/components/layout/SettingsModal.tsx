@@ -1,5 +1,11 @@
 import { useEffect, useState } from "react";
-import type { AppSettings, QuizGenerationScope, QuizValidationMode } from "@diffx/contracts";
+import type {
+  AppSettings,
+  QuizGenerationScope,
+  QuizProviderPreference,
+  QuizProviderStatus,
+  QuizValidationMode,
+} from "@diffx/contracts";
 
 const SCOPE_OPTIONS: Array<{ value: QuizGenerationScope; label: string }> = [
   { value: "staged", label: "staged changes" },
@@ -12,11 +18,21 @@ const VALIDATION_OPTIONS: Array<{ value: QuizValidationMode; label: string }> = 
   { value: "score_threshold", label: "score threshold" },
 ];
 
+const PROVIDER_OPTIONS: Array<{ value: QuizProviderPreference; label: string }> = [
+  { value: "auto", label: "auto" },
+  { value: "codex", label: "codex" },
+  { value: "claude", label: "claude" },
+  { value: "opencode", label: "opencode" },
+];
+
 type SettingsModalProps = {
   open: boolean;
   settings: AppSettings;
   isSaving: boolean;
   error: string | null;
+  providerStatuses: QuizProviderStatus[];
+  isLoadingProviders: boolean;
+  providersError: string | null;
   onClose: () => void;
   onSave: (settings: AppSettings) => void;
 };
@@ -26,6 +42,9 @@ export function SettingsModal({
   settings,
   isSaving,
   error,
+  providerStatuses,
+  isLoadingProviders,
+  providersError,
   onClose,
   onSave,
 }: SettingsModalProps) {
@@ -33,6 +52,9 @@ export function SettingsModal({
   const [questionCount, setQuestionCount] = useState(String(settings.quiz.questionCount));
   const [scope, setScope] = useState<QuizGenerationScope>(settings.quiz.scope);
   const [validationMode, setValidationMode] = useState<QuizValidationMode>(settings.quiz.validationMode);
+  const [providerPreference, setProviderPreference] = useState<QuizProviderPreference>(
+    settings.quiz.providerPreference,
+  );
   const [scoreThreshold, setScoreThreshold] = useState(
     settings.quiz.scoreThreshold === null ? "" : String(settings.quiz.scoreThreshold),
   );
@@ -47,6 +69,7 @@ export function SettingsModal({
     setQuestionCount(String(settings.quiz.questionCount));
     setScope(settings.quiz.scope);
     setValidationMode(settings.quiz.validationMode);
+    setProviderPreference(settings.quiz.providerPreference);
     setScoreThreshold(settings.quiz.scoreThreshold === null ? "" : String(settings.quiz.scoreThreshold));
     setLocalError(null);
   }, [open, settings]);
@@ -145,6 +168,39 @@ export function SettingsModal({
             </div>
           </div>
 
+          <div className="settings-row settings-row-block">
+            <span className="settings-label">Quiz provider</span>
+            <div className="settings-segment" role="radiogroup" aria-label="Quiz provider preference">
+              {PROVIDER_OPTIONS.map((option) => {
+                const selected = providerPreference === option.value;
+
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    className={selected ? "settings-segment-button settings-segment-button-selected" : "settings-segment-button"}
+                    onClick={() => setProviderPreference(option.value)}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+            {isLoadingProviders ? <p className="settings-meta">Checking provider availability...</p> : null}
+            {providersError ? <p className="error-note">{providersError}</p> : null}
+            {!isLoadingProviders && !providersError ? (
+              <div className="settings-provider-list" aria-label="Quiz provider availability">
+                {providerStatuses.map((provider) => (
+                  <p key={provider.id} className={provider.available ? "settings-meta" : "settings-meta settings-meta-warning"}>
+                    {provider.id}: {provider.available ? `ready (${provider.model})` : provider.reason ?? "unavailable"}
+                  </p>
+                ))}
+              </div>
+            ) : null}
+          </div>
+
           {validationMode === "score_threshold" ? (
             <label className="settings-row" htmlFor="quiz-threshold">
               <span className="settings-label">Score threshold</span>
@@ -204,6 +260,7 @@ export function SettingsModal({
                   scope,
                   validationMode,
                   scoreThreshold: normalizedThreshold,
+                  providerPreference,
                 },
               });
             }}

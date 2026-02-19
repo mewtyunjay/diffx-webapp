@@ -145,6 +145,8 @@ export type PushRequest = { createUpstream?: boolean };
 
 export type QuizGenerationScope = "staged" | "all_changes";
 export type QuizValidationMode = "answer_all" | "pass_all" | "score_threshold";
+export type QuizProviderId = "codex" | "claude" | "opencode";
+export type QuizProviderPreference = "auto" | QuizProviderId;
 
 export type QuizSettings = {
   gateEnabled: boolean;
@@ -152,6 +154,18 @@ export type QuizSettings = {
   scope: QuizGenerationScope;
   validationMode: QuizValidationMode;
   scoreThreshold: number | null;
+  providerPreference: QuizProviderPreference;
+};
+
+export type QuizProviderStatus = {
+  id: QuizProviderId;
+  available: boolean;
+  reason: string | null;
+  model: string;
+};
+
+export type GetQuizProvidersResponse = {
+  providers: QuizProviderStatus[];
 };
 
 export type AppSettings = {

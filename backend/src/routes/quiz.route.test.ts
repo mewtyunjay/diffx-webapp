@@ -4,12 +4,18 @@ import { createApp } from "../app.js";
 import {
   setQuizGeneratorProviderForTests,
   type QuizGeneratorProvider,
-} from "../services/quiz/codex-sdk.provider.js";
+} from "../services/quiz/provider-registry.js";
 import { resetQuizSessionsForTests } from "../services/quiz/quiz-session.service.js";
 import { resetSettingsForTests, updateSettings } from "../services/settings/settings.service.js";
 
 function createDeterministicProvider(): QuizGeneratorProvider {
   return {
+    id: "codex",
+
+    async checkAvailability() {
+      return { available: true };
+    },
+
     getAgentConfig() {
       return {
         provider: "deterministic-test-provider",
@@ -74,6 +80,7 @@ describe("/api/quiz", () => {
         scope: "all_changes",
         validationMode: "answer_all",
         scoreThreshold: null,
+        providerPreference: "auto",
       },
     });
     resetQuizSessionsForTests();
@@ -116,6 +123,21 @@ describe("/api/quiz", () => {
 
     expect(getResponse.status).toBe(200);
     expect(getResponse.body.id).toBe(createResponse.body.id);
+  });
+
+  it("returns provider availability statuses", async () => {
+    const app = createApp();
+
+    const response = await request(app).get("/api/quiz/providers");
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      providers: [
+        { id: "codex", available: true },
+        { id: "claude", available: false },
+        { id: "opencode", available: false },
+      ],
+    });
   });
 
   it("validates quiz after answer submission", async () => {
@@ -184,6 +206,8 @@ describe("/api/quiz", () => {
     const app = createApp();
 
     setQuizGeneratorProviderForTests({
+      id: "codex",
+
       getAgentConfig() {
         return {
           provider: "throwing-test-provider",

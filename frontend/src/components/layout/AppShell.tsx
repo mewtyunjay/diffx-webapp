@@ -28,6 +28,7 @@ import { getChangedFiles } from "../../services/api/files";
 import { getHealth } from "../../services/api/health";
 import {
   createQuizSession,
+  getQuizProviders,
   getQuizSession,
   openQuizSessionStream,
   submitQuizAnswers,
@@ -67,6 +68,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     scope: "staged",
     validationMode: "answer_all",
     scoreThreshold: null,
+    providerPreference: "auto",
   },
 };
 
@@ -367,8 +369,17 @@ export function AppShell({ initialRepo }: AppShellProps) {
     placeholderData: (previousData) => previousData ?? DEFAULT_SETTINGS,
   });
 
+  const providerStatusQuery = useQuery({
+    queryKey: queryKeys.quizProviders,
+    queryFn: getQuizProviders,
+    staleTime: 30_000,
+  });
+
   const settings = settingsQuery.data ?? DEFAULT_SETTINGS;
   const settingsUiError = settingsQuery.isError ? toUiError(settingsQuery.error) : null;
+  const providersUiError = providerStatusQuery.isError
+    ? toUiError(providerStatusQuery.error, "Unable to load provider statuses.")
+    : null;
 
   const files = filesQuery.data ?? [];
   const filesUiError = filesQuery.isError ? toUiError(filesQuery.error) : null;
@@ -1289,6 +1300,9 @@ export function AppShell({ initialRepo }: AppShellProps) {
             ? toUiError(settingsMutation.error, "Unable to save settings.").message
             : (settingsUiError?.message ?? null)
         }
+        providerStatuses={providerStatusQuery.data?.providers ?? []}
+        isLoadingProviders={providerStatusQuery.isPending}
+        providersError={providersUiError?.message ?? null}
         onClose={() => setSettingsOpen(false)}
         onSave={(nextSettings) => {
           settingsMutation.mutate(nextSettings);

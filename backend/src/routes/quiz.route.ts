@@ -1,6 +1,7 @@
 import { Router } from "express";
 import type {
   CreateQuizSessionRequest,
+  GetQuizProvidersResponse,
   SubmitQuizAnswersRequest,
   ValidateQuizSessionRequest,
 } from "@diffx/contracts";
@@ -12,9 +13,20 @@ import {
   subscribeToQuizSession,
   validateQuizSession,
 } from "../services/quiz/quiz-session.service.js";
+import { getQuizProviderStatuses } from "../services/quiz/provider-registry.js";
 import { sendRouteError } from "./http.js";
 
 const router = Router();
+
+router.get("/quiz/providers", async (_req, res) => {
+  try {
+    const providers = await getQuizProviderStatuses();
+    const payload: GetQuizProvidersResponse = { providers };
+    res.json(payload);
+  } catch (error) {
+    sendRouteError(res, error);
+  }
+});
 
 function writeSseEvent(
   res: {

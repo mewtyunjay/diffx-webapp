@@ -1,5 +1,6 @@
 import type {
   CreateQuizSessionRequest,
+  GetQuizProvidersResponse,
   QuizSession,
   QuizSseEvent,
   SubmitQuizAnswersRequest,
@@ -39,6 +40,10 @@ export async function validateQuizSession(
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
+}
+
+export async function getQuizProviders(): Promise<GetQuizProvidersResponse> {
+  return await fetchJson<GetQuizProvidersResponse>("/api/quiz/providers");
 }
 
 type QuizStreamHandlers = {

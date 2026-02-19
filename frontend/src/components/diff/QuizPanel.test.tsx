@@ -10,6 +10,7 @@ const QUIZ_SETTINGS: QuizSettings = {
   scope: "staged",
   validationMode: "answer_all",
   scoreThreshold: null,
+  providerPreference: "auto",
 };
 
 function buildSession(status: QuizSession["status"]): QuizSession {
@@ -113,6 +114,7 @@ describe("QuizPanel", () => {
           scope: "all_changes",
           validationMode: "score_threshold",
           scoreThreshold: 4,
+          providerPreference: "auto",
         }}
         commitMessageDraft=""
         session={null}

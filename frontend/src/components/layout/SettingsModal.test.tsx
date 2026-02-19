@@ -11,6 +11,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     scope: "staged",
     validationMode: "answer_all",
     scoreThreshold: null,
+    providerPreference: "auto",
   },
 };
 
@@ -28,6 +29,9 @@ describe("SettingsModal", () => {
         settings={DEFAULT_SETTINGS}
         isSaving={false}
         error={null}
+        providerStatuses={[]}
+        isLoadingProviders={false}
+        providersError={null}
         onClose={() => undefined}
         onSave={onSave}
       />,
@@ -39,6 +43,7 @@ describe("SettingsModal", () => {
     fireEvent.change(screen.getByLabelText("Question count"), { target: { value: "5" } });
     fireEvent.click(screen.getByRole("radio", { name: "all changes" }));
     fireEvent.click(screen.getByRole("radio", { name: "score threshold" }));
+    fireEvent.click(screen.getByRole("radio", { name: "claude" }));
     fireEvent.change(screen.getByLabelText("Score threshold"), { target: { value: "3" } });
 
     fireEvent.click(screen.getByRole("button", { name: "save settings" }));
@@ -50,6 +55,7 @@ describe("SettingsModal", () => {
         scope: "all_changes",
         validationMode: "score_threshold",
         scoreThreshold: 3,
+        providerPreference: "claude",
       },
     });
   });

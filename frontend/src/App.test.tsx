@@ -18,6 +18,7 @@ import { getChangedFiles } from "./services/api/files";
 import { getHealth } from "./services/api/health";
 import {
   createQuizSession,
+  getQuizProviders,
   getQuizSession,
   openQuizSessionStream,
   submitQuizAnswers,
@@ -50,6 +51,7 @@ vi.mock("./services/api/settings", () => ({
 
 vi.mock("./services/api/quiz", () => ({
   createQuizSession: vi.fn(),
+  getQuizProviders: vi.fn(),
   getQuizSession: vi.fn(),
   openQuizSessionStream: vi.fn(() => () => undefined),
   submitQuizAnswers: vi.fn(),
@@ -86,6 +88,7 @@ describe("App", () => {
   const getSettingsMock = vi.mocked(getSettings);
   const putSettingsMock = vi.mocked(putSettings);
   const createQuizSessionMock = vi.mocked(createQuizSession);
+  const getQuizProvidersMock = vi.mocked(getQuizProviders);
   const getQuizSessionMock = vi.mocked(getQuizSession);
   const openQuizSessionStreamMock = vi.mocked(openQuizSessionStream);
   const submitQuizAnswersMock = vi.mocked(submitQuizAnswers);
@@ -130,6 +133,7 @@ describe("App", () => {
         scope: "staged" as const,
         validationMode: "answer_all" as const,
         scoreThreshold: null,
+        providerPreference: "auto" as const,
       },
     };
   }
@@ -233,6 +237,13 @@ describe("App", () => {
     getSettingsMock.mockResolvedValue(buildDefaultSettings());
     putSettingsMock.mockResolvedValue(buildDefaultSettings());
     createQuizSessionMock.mockReset();
+    getQuizProvidersMock.mockResolvedValue({
+      providers: [
+        { id: "codex", available: true, reason: null, model: "gpt-5.3-codex-spark" },
+        { id: "claude", available: false, reason: "unavailable", model: "claude-sonnet-4-5" },
+        { id: "opencode", available: false, reason: "unavailable", model: "configured-default" },
+      ],
+    });
     getQuizSessionMock.mockReset();
     openQuizSessionStreamMock.mockReturnValue(() => undefined);
     submitQuizAnswersMock.mockReset();
@@ -830,6 +841,7 @@ describe("App", () => {
         scope: "staged",
         validationMode: "answer_all",
         scoreThreshold: null,
+        providerPreference: "auto",
       },
     });
 
@@ -868,6 +880,7 @@ describe("App", () => {
         scope: "staged",
         validationMode: "answer_all",
         scoreThreshold: null,
+        providerPreference: "auto",
       },
     });
 

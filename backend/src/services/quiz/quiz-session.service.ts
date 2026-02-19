@@ -2,6 +2,7 @@ import { EventEmitter } from "node:events";
 import { randomUUID } from "node:crypto";
 import type {
   CreateQuizSessionRequest,
+  QuizProviderPreference,
   QuizSession,
   QuizSseEvent,
   QuizValidationResult,
@@ -13,7 +14,7 @@ import { getSettings } from "../settings/settings.service.js";
 import {
   getQuizGeneratorProvider,
   resetQuizGeneratorProviderForTests,
-} from "./codex-sdk.provider.js";
+} from "./provider-registry.js";
 import {
   buildQuizPromptContext,
   getCurrentQuizSourceFingerprint,
@@ -272,10 +273,11 @@ async function runGeneration(
     commitMessage: string;
     focusFiles: string[];
     promptContext: string;
+    providerPreference: QuizProviderPreference;
   },
 ) {
   const timeoutMs = getGenerationTimeoutMs();
-  const provider = getQuizGeneratorProvider();
+  const provider = await getQuizGeneratorProvider(input.providerPreference);
   const agentConfig = provider.getAgentConfig();
 
   logQuizGeneration("generate tests requested", {
@@ -483,6 +485,7 @@ export async function createQuizSession(input: CreateQuizSessionRequest): Promis
     commitMessage,
     focusFiles: promptContext.focusFiles,
     promptContext: promptContext.promptContext,
+    providerPreference: settings.quiz.providerPreference,
   });
 
   return cloneSession(session);

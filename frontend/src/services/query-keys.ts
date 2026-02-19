@@ -4,6 +4,7 @@ export const queryKeys = {
   health: ["health"] as const,
   repo: ["repo"] as const,
   settings: ["settings"] as const,
+  quizProviders: ["quizProviders"] as const,
   filesRoot: ["files"] as const,
   files: ["files"] as const,
   branches: ["branches"] as const,

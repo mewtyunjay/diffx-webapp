@@ -30,7 +30,9 @@
     "test": "bun run test:backend && bun run test:frontend"
   },
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.47",
     "@openai/codex-sdk": "*",
+    "@opencode-ai/sdk": "^1.2.6",
     "@pierre/diffs": "^1.0.11",
     "cors": "^2.8.6",
     "express": "^5.2.1"

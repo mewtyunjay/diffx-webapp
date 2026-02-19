@@ -1,4 +1,4 @@
-import type { AppSettings, QuizValidationMode } from "@diffx/contracts";
+import type { AppSettings, QuizProviderPreference, QuizValidationMode } from "@diffx/contracts";
 import { ApiRouteError } from "../../domain/api-route-error.js";
 
 const MIN_QUESTION_COUNT = 1;
@@ -11,6 +11,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     scope: "staged",
     validationMode: "answer_all",
     scoreThreshold: null,
+    providerPreference: "auto",
   },
 };
 
@@ -24,12 +25,17 @@ function cloneSettings(settings: AppSettings): AppSettings {
       scope: settings.quiz.scope,
       validationMode: settings.quiz.validationMode,
       scoreThreshold: settings.quiz.scoreThreshold,
+      providerPreference: settings.quiz.providerPreference,
     },
   };
 }
 
 function isValidationMode(value: unknown): value is QuizValidationMode {
   return value === "answer_all" || value === "pass_all" || value === "score_threshold";
+}
+
+function isProviderPreference(value: unknown): value is QuizProviderPreference {
+  return value === "auto" || value === "codex" || value === "claude" || value === "opencode";
 }
 
 function toInvalidSettingsError(message: string): ApiRouteError {
@@ -105,6 +111,12 @@ function validateAndNormalizeSettings(next: AppSettings): AppSettings {
     );
   }
 
+  if (!isProviderPreference(quiz.providerPreference)) {
+    throw toInvalidSettingsError(
+      "`quiz.providerPreference` must be 'auto', 'codex', 'claude', or 'opencode'.",
+    );
+  }
+
   const normalizedThreshold = normalizeThreshold(
     quiz.validationMode,
     quiz.scoreThreshold,
@@ -115,11 +127,12 @@ function validateAndNormalizeSettings(next: AppSettings): AppSettings {
     quiz: {
       gateEnabled: quiz.gateEnabled,
       questionCount: quiz.questionCount,
-      scope: quiz.scope,
-      validationMode: quiz.validationMode,
-      scoreThreshold: normalizedThreshold,
-    },
-  };
+        scope: quiz.scope,
+        validationMode: quiz.validationMode,
+        scoreThreshold: normalizedThreshold,
+        providerPreference: quiz.providerPreference,
+      },
+    };
 }
 
 export function getSettings(): AppSettings {
