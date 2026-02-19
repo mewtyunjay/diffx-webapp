@@ -1,18 +1,38 @@
 {
   "name": "diffx",
+  "version": "0.1.0",
+  "type": "module",
   "private": true,
+  "bin": {
+    "diffx": "bin/diffx.mjs"
+  },
+  "files": [
+    "bin",
+    "backend/dist",
+    "frontend/dist",
+    "README.md"
+  ],
   "workspaces": [
     "frontend",
     "backend",
     "shared/contracts"
   ],
   "scripts": {
+    "build": "bun run build:backend && bun run build:frontend",
     "dev:frontend": "bun run --cwd frontend dev",
     "dev:backend": "bun run --cwd backend dev",
     "build:frontend": "bun run --cwd frontend build",
     "build:backend": "bun run --cwd backend build",
+    "start": "node bin/diffx.mjs",
+    "pack:local": "bun run build && npm pack",
     "test:frontend": "bun run --cwd frontend test",
     "test:backend": "bun run --cwd backend test",
     "test": "bun run test:backend && bun run test:frontend"
+  },
+  "dependencies": {
+    "@openai/codex-sdk": "*",
+    "@pierre/diffs": "^1.0.11",
+    "cors": "^2.8.6",
+    "express": "^5.2.1"
   }
 }
