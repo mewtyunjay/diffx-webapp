@@ -36,7 +36,8 @@ report.*.json
 *.sln
 *.sw?
 
-*.md 
+*.md
 .codex
 .claude
 .cursor
+phases.json
