@@ -121,6 +121,7 @@ export type ApiErrorCode =
   | "INVALID_QUIZ_ANSWER"
   | "INVALID_QUIZ_PAYLOAD"
   | "INVALID_COMMIT_MESSAGE"
+  | "COMMIT_MESSAGE_GENERATION_FAILED"
   | "INVALID_PUSH_REQUEST"
   | "QUIZ_SESSION_NOT_FOUND"
   | "QUIZ_SESSION_NOT_READY"
@@ -145,6 +146,8 @@ export type StageManyRequest = { paths: string[] };
 export type UnstageFileRequest = { path: string };
 export type UnstageManyRequest = { paths: string[] };
 export type CommitRequest = { message: string };
+export type GenerateCommitMessageRequest = { draft?: string };
+export type GenerateCommitMessageResponse = { message: string };
 export type PushRequest = { createUpstream?: boolean };
 
 export type QuizGenerationScope = "staged" | "all_changes";

@@ -2,13 +2,6 @@ import { useMemo } from "react";
 import type { ChangedFile, ChangedFileStatus } from "@diffx/contracts";
 import { DiffStatBadge } from "./DiffStatBadge";
 
-export type FilesDockAction = "commit" | "push" | "create-upstream";
-
-export type FilesDockMessage = {
-  tone: "info" | "error";
-  text: string;
-} | null;
-
 type FilesTabProps = {
   files: ChangedFile[];
   selectedFile: ChangedFile | null;
@@ -18,17 +11,6 @@ type FilesTabProps = {
   onStageFiles: (paths: string[]) => void;
   onUnstageFiles: (paths: string[]) => void;
   pendingMutationsByPath: ReadonlyMap<string, "stage" | "unstage">;
-  stagedCount: number;
-  dockAction: FilesDockAction;
-  dockMessage: FilesDockMessage;
-  isCommitting: boolean;
-  isPushing: boolean;
-  commitMessage: string;
-  commitActionLabel?: string;
-  commitActionDisabled?: boolean;
-  onCommitMessageChange: (message: string) => void;
-  onCommitChanges: (message: string) => void;
-  onPushChanges: (createUpstream: boolean) => void;
 };
 
 const STATUS_ORDER: ChangedFileStatus[] = ["staged", "unstaged", "untracked"];
@@ -129,17 +111,6 @@ export function FilesTab({
   onStageFiles,
   onUnstageFiles,
   pendingMutationsByPath,
-  stagedCount,
-  dockAction,
-  dockMessage,
-  isCommitting,
-  isPushing,
-  commitMessage,
-  commitActionLabel,
-  commitActionDisabled,
-  onCommitMessageChange,
-  onCommitChanges,
-  onPushChanges,
 }: FilesTabProps) {
   const statsByFile = useMemo(() => {
     const map = new Map<string, { additions: number | null; deletions: number | null } | null>();
@@ -159,35 +130,6 @@ export function FilesTab({
   }, [files]);
 
   const displayPathByFile = useMemo(() => buildDisplayPathMap(files), [files]);
-
-  const trimmedCommitMessage = commitMessage.trim();
-  const isCommitAction = dockAction === "commit";
-  const canCommit = trimmedCommitMessage.length > 0 && stagedCount > 0 && !isCommitting && !isPushing;
-  const canPush = !isCommitting && !isPushing;
-  const actionDisabled = isCommitAction ? (commitActionDisabled ?? !canCommit) : !canPush;
-
-  const actionLabel = isCommitting
-    ? "committing..."
-    : isPushing
-      ? dockAction === "create-upstream"
-        ? "creating upstream..."
-        : "pushing..."
-      : isCommitAction
-        ? (commitActionLabel ?? "commit")
-        : dockAction === "create-upstream"
-          ? "create upstream + push"
-          : dockAction;
-
-  const dockInfo =
-    dockAction === "commit"
-      ? null
-      : dockMessage?.tone === "info"
-        ? dockMessage.text
-        : dockAction === "create-upstream"
-          ? "No upstream branch is configured for this branch."
-          : "Commit created. Push to publish changes.";
-
-  const dockError = dockMessage?.tone === "error" ? dockMessage.text : null;
 
   return (
     <div className="files-tab">
@@ -273,42 +215,6 @@ export function FilesTab({
             </section>
           );
         })}
-      </div>
-
-      <div className="files-commit-dock">
-        <p className="hud-label">{isCommitAction ? "commit message" : "publish"}</p>
-
-        <div className="files-commit-entry">
-          {isCommitAction ? (
-            <textarea
-              className="files-commit-input"
-              rows={2}
-              value={commitMessage}
-              onChange={(event) => onCommitMessageChange(event.target.value)}
-              placeholder="describe why this change exists"
-            />
-          ) : (
-            <p className="inline-note files-commit-status">{dockInfo}</p>
-          )}
-
-          <button
-            className="hud-button"
-            type="button"
-            disabled={actionDisabled}
-            onClick={() => {
-              if (isCommitAction) {
-                onCommitChanges(trimmedCommitMessage);
-                return;
-              }
-
-              onPushChanges(dockAction === "create-upstream");
-            }}
-          >
-            {actionLabel}
-          </button>
-        </div>
-
-        {dockError ? <p className="error-note files-commit-feedback">{dockError}</p> : null}
       </div>
     </div>
   );

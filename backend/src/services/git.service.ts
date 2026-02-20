@@ -1,5 +1,6 @@
 export {
   commitChanges,
+  generateCommitMessage,
   pushChanges,
   stageFile,
   stageManyFiles,

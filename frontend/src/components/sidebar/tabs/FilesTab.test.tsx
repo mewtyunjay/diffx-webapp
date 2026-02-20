@@ -2,7 +2,7 @@ import React from "react";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ChangedFile } from "@diffx/contracts";
-import { FilesTab, type FilesDockMessage } from "./FilesTab";
+import { FilesTab } from "./FilesTab";
 
 function renderFilesTab(options?: {
   files?: ChangedFile[];
@@ -11,26 +11,12 @@ function renderFilesTab(options?: {
   onUnstageFile?: (path: string) => void;
   onStageFiles?: (paths: string[]) => void;
   onUnstageFiles?: (paths: string[]) => void;
-  stagedCount?: number;
-  dockAction?: "commit" | "push" | "create-upstream";
-  dockMessage?: FilesDockMessage;
-  isCommitting?: boolean;
-  isPushing?: boolean;
-  commitMessage?: string;
-  commitActionLabel?: string;
-  commitActionDisabled?: boolean;
-  onCommitMessageChange?: (message: string) => void;
-  onCommitChanges?: (message: string) => void;
-  onPushChanges?: (createUpstream: boolean) => void;
 }) {
   const onSelectFile = vi.fn();
   const onStageFile = options?.onStageFile ?? vi.fn();
   const onUnstageFile = options?.onUnstageFile ?? vi.fn();
   const onStageFiles = options?.onStageFiles ?? vi.fn();
   const onUnstageFiles = options?.onUnstageFiles ?? vi.fn();
-  const onCommitMessageChange = options?.onCommitMessageChange ?? vi.fn();
-  const onCommitChanges = options?.onCommitChanges ?? vi.fn();
-  const onPushChanges = options?.onPushChanges ?? vi.fn();
   const files = options?.files ?? [
     {
       path: "src/first.ts",
@@ -62,17 +48,6 @@ function renderFilesTab(options?: {
       onStageFiles={onStageFiles}
       onUnstageFiles={onUnstageFiles}
       pendingMutationsByPath={options?.pendingMutationsByPath ?? new Map()}
-      stagedCount={options?.stagedCount ?? 1}
-      dockAction={options?.dockAction ?? "commit"}
-      dockMessage={options?.dockMessage ?? null}
-      isCommitting={options?.isCommitting ?? false}
-      isPushing={options?.isPushing ?? false}
-      commitMessage={options?.commitMessage ?? ""}
-      commitActionLabel={options?.commitActionLabel}
-      commitActionDisabled={options?.commitActionDisabled}
-      onCommitMessageChange={onCommitMessageChange}
-      onCommitChanges={onCommitChanges}
-      onPushChanges={onPushChanges}
     />,
   );
 
@@ -82,9 +57,6 @@ function renderFilesTab(options?: {
     onUnstageFile,
     onStageFiles,
     onUnstageFiles,
-    onCommitMessageChange,
-    onCommitChanges,
-    onPushChanges,
   };
 }
 
@@ -148,8 +120,6 @@ describe("FilesTab row actions", () => {
     const unstageButton = screen.getByRole("button", { name: "unstage src/already-staged.ts" });
 
     expect(pendingButton).toBeDisabled();
-    expect(pendingButton).toHaveTextContent("+");
-    expect(pendingButton).not.toHaveTextContent("staging...");
     expect(otherStageButton).toBeEnabled();
     expect(unstageButton).toBeEnabled();
 
@@ -178,56 +148,5 @@ describe("FilesTab row actions", () => {
     expect(row).not.toBeNull();
     expect(within(row!).getByText("+5")).toBeInTheDocument();
     expect(within(row!).getByText("-0")).toBeInTheDocument();
-  });
-
-  it("shows a one-line commit dock and submits trimmed message", () => {
-    const onCommitChanges = vi.fn();
-
-    renderFilesTab({ onCommitChanges, stagedCount: 1, commitMessage: "  tidy files tab flow  " });
-
-    const input = screen.getByPlaceholderText("describe why this change exists");
-    expect(input).toHaveAttribute("rows", "2");
-    fireEvent.click(screen.getByRole("button", { name: "commit" }));
-
-    expect(onCommitChanges).toHaveBeenCalledWith("tidy files tab flow");
-  });
-
-  it("emits commit message changes via callback", () => {
-    const onCommitMessageChange = vi.fn();
-
-    renderFilesTab({ onCommitMessageChange });
-
-    fireEvent.change(screen.getByPlaceholderText("describe why this change exists"), {
-      target: { value: "hello quiz" },
-    });
-
-    expect(onCommitMessageChange).toHaveBeenCalledWith("hello quiz");
-  });
-
-  it("switches dock action to push and triggers push callback", () => {
-    const onPushChanges = vi.fn();
-
-    renderFilesTab({ dockAction: "push", onPushChanges, stagedCount: 0 });
-
-    expect(screen.queryByPlaceholderText("describe why this change exists")).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "push" }));
-    expect(onPushChanges).toHaveBeenCalledWith(false);
-  });
-
-  it("shows create-upstream push action when upstream is missing", () => {
-    const onPushChanges = vi.fn();
-
-    renderFilesTab({
-      dockAction: "create-upstream",
-      stagedCount: 0,
-      onPushChanges,
-      dockMessage: { tone: "info", text: "No upstream exists for 'main'. Should I create one with the same name?" },
-    });
-
-    expect(screen.getByText("No upstream exists for 'main'. Should I create one with the same name?")).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "create upstream + push" }));
-    expect(onPushChanges).toHaveBeenCalledWith(true);
   });
 });

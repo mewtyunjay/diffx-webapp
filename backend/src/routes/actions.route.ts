@@ -2,6 +2,7 @@
 import { Router } from "express";
 import type {
   CommitRequest,
+  GenerateCommitMessageRequest,
   PushRequest,
   StageManyRequest,
   StageFileRequest,
@@ -10,6 +11,7 @@ import type {
 } from "@diffx/contracts";
 import {
   commitChanges,
+  generateCommitMessage,
   pushChanges,
   stageFile,
   stageManyFiles,
@@ -109,6 +111,26 @@ router.post("/actions/commit", async (req, res) => {
 
   try {
     const response = await commitChanges(body.message);
+    res.json(response);
+  } catch (error) {
+    sendRouteError(res, error);
+  }
+});
+
+router.post("/actions/commit-message", async (req, res) => {
+  const body = (req.body ?? {}) as Partial<GenerateCommitMessageRequest>;
+
+  if (body.draft !== undefined && typeof body.draft !== "string") {
+    return sendApiError(
+      res,
+      400,
+      "INVALID_COMMIT_MESSAGE",
+      "Body `draft` must be string when provided.",
+    );
+  }
+
+  try {
+    const response = await generateCommitMessage({ draft: body.draft });
     res.json(response);
   } catch (error) {
     sendRouteError(res, error);

@@ -21,6 +21,19 @@ describe("toUiError", () => {
     });
   });
 
+  it("maps commit message generation failures with retry hint", () => {
+    const error = new ApiRequestError(
+      502,
+      "COMMIT_MESSAGE_GENERATION_FAILED",
+      "codex unavailable",
+    );
+
+    expect(toUiError(error)).toEqual({
+      message: "Unable to generate a commit message. Verify local Codex login and retry.",
+      retryable: true,
+    });
+  });
+
   it("maps workspace picker unsupported errors to manual fallback guidance", () => {
     const error = new ApiRequestError(501, "WORKSPACE_PICK_UNSUPPORTED", "unsupported");
 

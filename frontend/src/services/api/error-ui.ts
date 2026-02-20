@@ -10,6 +10,7 @@ const RETRYABLE_CODES = new Set<ApiErrorCode>([
   "GIT_COMMAND_FAILED",
   "INTERNAL_ERROR",
   "QUIZ_GENERATION_FAILED",
+  "COMMIT_MESSAGE_GENERATION_FAILED",
 ]);
 
 const COPY_BY_CODE: Record<ApiErrorCode, string> = {
@@ -27,6 +28,8 @@ const COPY_BY_CODE: Record<ApiErrorCode, string> = {
   INVALID_QUIZ_ANSWER: "One or more quiz answers are invalid.",
   INVALID_QUIZ_PAYLOAD: "Generated quiz payload is invalid.",
   INVALID_COMMIT_MESSAGE: "Commit message is invalid. Please provide a clear message.",
+  COMMIT_MESSAGE_GENERATION_FAILED:
+    "Unable to generate a commit message. Verify local Codex login and retry.",
   INVALID_PUSH_REQUEST: "Push request is invalid.",
   QUIZ_SESSION_NOT_FOUND: "Quiz session no longer exists. Start a new session.",
   QUIZ_SESSION_NOT_READY: "Quiz is still generating. Please wait a moment.",

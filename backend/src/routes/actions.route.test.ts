@@ -25,6 +25,33 @@ describe("POST /api/actions validation", () => {
     });
   });
 
+  it("rejects commit-message generation request with invalid draft type", async () => {
+    const app = createApp();
+
+    const response = await request(app)
+      .post("/api/actions/commit-message")
+      .send({ draft: 42 });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject({
+      code: "INVALID_COMMIT_MESSAGE",
+    });
+  });
+
+  it("returns generated commit message suggestion in test runtime", async () => {
+    const app = createApp();
+
+    const response = await request(app)
+      .post("/api/actions/commit-message")
+      .send({ draft: "" });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      ok: true,
+      message: "update staged changes",
+    });
+  });
+
   it("rejects stage-many request with invalid paths", async () => {
     const app = createApp();
 

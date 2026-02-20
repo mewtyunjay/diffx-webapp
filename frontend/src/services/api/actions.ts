@@ -1,6 +1,7 @@
 import type {
   ActionResponse,
   CommitRequest,
+  GenerateCommitMessageRequest,
   PushRequest,
   StageManyRequest,
   StageFileRequest,
@@ -43,6 +44,16 @@ export async function unstageManyFiles(body: UnstageManyRequest): Promise<Action
 
 export async function commitChanges(body: CommitRequest): Promise<ActionResponse> {
   return await fetchJson<ActionResponse>("/api/actions/commit", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export async function generateCommitMessage(
+  body: GenerateCommitMessageRequest = {},
+): Promise<ActionResponse> {
+  return await fetchJson<ActionResponse>("/api/actions/commit-message", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),

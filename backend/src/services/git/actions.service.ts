@@ -1,11 +1,20 @@
-import type { ActionResponse, PushRequest } from "@diffx/contracts";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { Codex } from "@openai/codex-sdk";
+import type {
+  ActionResponse,
+  GenerateCommitMessageRequest,
+  PushRequest,
+} from "@diffx/contracts";
 import { ApiRouteError } from "../../domain/api-route-error.js";
+import { getDiffSummary } from "../diff/diff-summary.service.js";
 import {
   GitCommandError,
   type GitExecResult,
   execGit,
   toGitApiError,
 } from "./git-client.js";
+import { getChangedFiles } from "./files.service.js";
 import { resolveRepoPath } from "./path.service.js";
 import { requireGitContext } from "./repo-context.service.js";
 
@@ -42,6 +51,330 @@ function resolveUniqueRelativePaths(repoRoot: string, requestedPaths: string[]):
   }
 
   return [...uniquePaths];
+}
+
+const execFileAsync = promisify(execFile);
+const API_KEY_ENV_KEYS = new Set(["OPENAI_API_KEY", "CODEX_API_KEY"]);
+const RECENT_COMMIT_HISTORY_LIMIT = 6;
+const STAGED_FILE_CONTEXT_LIMIT = 6;
+const MAX_PATCH_LINES_PER_FILE = 80;
+const AUTH_CHECK_TIMEOUT_MS = 5000;
+const COMMIT_MESSAGE_MODEL = "gpt-5.3-codex-spark";
+const MAX_RESPONSE_TEXT_DEPTH = 8;
+const MAX_RESPONSE_TEXT_PARTS = 2000;
+
+function isTestRuntime(): boolean {
+  return process.env.NODE_ENV === "test" || process.env.VITEST === "true";
+}
+
+function buildLocalCodexEnv(): Record<string, string> {
+  const env: Record<string, string> = {};
+
+  for (const [key, value] of Object.entries(process.env)) {
+    if (typeof value !== "string") {
+      continue;
+    }
+
+    if (API_KEY_ENV_KEYS.has(key)) {
+      continue;
+    }
+
+    env[key] = value;
+  }
+
+  return env;
+}
+
+function toBoundedPatch(patch: string): string {
+  return patch
+    .split("\n")
+    .slice(0, MAX_PATCH_LINES_PER_FILE)
+    .map((line) => (line.length > 300 ? `${line.slice(0, 300)}...` : line))
+    .join("\n");
+}
+
+function collectTextParts(
+  value: unknown,
+  sink: string[],
+  depth: number,
+  visited: Set<object>,
+): void {
+  if (sink.length >= MAX_RESPONSE_TEXT_PARTS || depth > MAX_RESPONSE_TEXT_DEPTH) {
+    return;
+  }
+
+  if (typeof value === "string") {
+    if (value.trim().length > 0) {
+      sink.push(value);
+    }
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectTextParts(item, sink, depth + 1, visited);
+      if (sink.length >= MAX_RESPONSE_TEXT_PARTS) {
+        return;
+      }
+    }
+    return;
+  }
+
+  if (!value || typeof value !== "object") {
+    return;
+  }
+
+  if (visited.has(value)) {
+    return;
+  }
+
+  visited.add(value);
+
+  for (const child of Object.values(value as Record<string, unknown>)) {
+    collectTextParts(child, sink, depth + 1, visited);
+    if (sink.length >= MAX_RESPONSE_TEXT_PARTS) {
+      return;
+    }
+  }
+}
+
+function normalizeResponseText(value: unknown): string | null {
+  const parts: string[] = [];
+  collectTextParts(value, parts, 0, new Set<object>());
+
+  if (parts.length === 0) {
+    return null;
+  }
+
+  return parts.join("\n");
+}
+
+export function sanitizeCommitMessageSuggestion(value: string): string | null {
+  const lines = value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && line !== "```");
+
+  for (const line of lines) {
+    let candidate = line
+      .replace(/^[\-*]\s+/, "")
+      .replace(/^\d+[.)]\s+/, "")
+      .replace(/^commit message\s*[:\-]\s*/i, "")
+      .replace(/^['"`]+|['"`]+$/g, "")
+      .trim();
+
+    if (candidate.length === 0) {
+      continue;
+    }
+
+    if (candidate.length > 72) {
+      candidate = candidate.slice(0, 72).trimEnd();
+    }
+
+    return candidate;
+  }
+
+  return null;
+}
+
+async function getRecentCommitSubjects(repoRoot: string): Promise<string[]> {
+  try {
+    const result = await execGit(
+      [
+        "-C",
+        repoRoot,
+        "log",
+        `-${RECENT_COMMIT_HISTORY_LIMIT}`,
+        "--pretty=format:%s",
+      ],
+      { allowExitCodes: [0, 128] },
+    );
+
+    if (result.exitCode !== 0) {
+      return [];
+    }
+
+    return result.stdout
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+      .slice(0, RECENT_COMMIT_HISTORY_LIMIT);
+  } catch {
+    return [];
+  }
+}
+
+async function getStagedFileContext(): Promise<string> {
+  const files = await getChangedFiles();
+  const stagedFiles = files.filter((file) => file.status === "staged").slice(0, STAGED_FILE_CONTEXT_LIMIT);
+
+  if (stagedFiles.length === 0) {
+    throw new ApiRouteError(
+      409,
+      "COMMIT_MESSAGE_GENERATION_FAILED",
+      "Stage at least one file before generating a commit message.",
+    );
+  }
+
+  const sections = await Promise.all(
+    stagedFiles.map(async (file) => {
+      try {
+        const summary = await getDiffSummary(file.path, "staged", 2);
+
+        if (!summary.file || !summary.file.patch) {
+          return [
+            `File: ${file.path}`,
+            `Status: ${file.status}`,
+            file.stats
+              ? `Stats: +${file.stats.additions ?? "?"} -${file.stats.deletions ?? "?"}`
+              : "Stats: unavailable",
+            "Patch unavailable.",
+          ].join("\n");
+        }
+
+        return [
+          `File: ${summary.file.path}`,
+          `Stats: +${summary.file.stats.additions} -${summary.file.stats.deletions} hunks:${summary.file.stats.hunks}`,
+          "Patch:",
+          toBoundedPatch(summary.file.patch),
+        ].join("\n");
+      } catch {
+        return [
+          `File: ${file.path}`,
+          "Patch unavailable.",
+        ].join("\n");
+      }
+    }),
+  );
+
+  return sections.join("\n\n---\n\n");
+}
+
+async function checkCodexCliAuth(): Promise<void> {
+  try {
+    const { stdout, stderr } = await execFileAsync("codex", ["login", "status"], {
+      timeout: AUTH_CHECK_TIMEOUT_MS,
+      env: buildLocalCodexEnv(),
+      maxBuffer: 1024 * 1024,
+    });
+
+    const output = `${stdout ?? ""}\n${stderr ?? ""}`.toLowerCase();
+    if (output.includes("logged in") || output.includes("chatgpt")) {
+      return;
+    }
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      throw new ApiRouteError(
+        502,
+        "COMMIT_MESSAGE_GENERATION_FAILED",
+        "Codex CLI is not installed. Install Codex and run `codex login`.",
+      );
+    }
+
+    const stdout =
+      error && typeof error === "object" && "stdout" in error && typeof error.stdout === "string"
+        ? error.stdout
+        : "";
+    const stderr =
+      error && typeof error === "object" && "stderr" in error && typeof error.stderr === "string"
+        ? error.stderr
+        : "";
+    const output = `${stdout}\n${stderr}`.toLowerCase();
+
+    if (output.includes("logged in") || output.includes("chatgpt")) {
+      return;
+    }
+  }
+
+  throw new ApiRouteError(
+    502,
+    "COMMIT_MESSAGE_GENERATION_FAILED",
+    "Codex local auth is missing. Run `codex login` and retry commit message generation.",
+  );
+}
+
+export function buildCommitMessagePrompt(input: {
+  stagedFileContext: string;
+  recentCommitSubjects: string[];
+  draft: string | null;
+}): string {
+  const history =
+    input.recentCommitSubjects.length > 0
+      ? input.recentCommitSubjects.map((subject) => `- ${subject}`).join("\n")
+      : "- (no local history available)";
+
+  const draftContext = input.draft
+    ? `Current draft from user:\n${input.draft}\n\n`
+    : "";
+
+  return [
+    "You write Git commit subject lines.",
+    "Return exactly one commit subject line.",
+    "Constraints:",
+    "- imperative style",
+    "- max 72 characters",
+    "- no quotes, no bullets, no markdown",
+    "- avoid trailing period",
+    "",
+    "Recent local commit subjects:",
+    history,
+    "",
+    draftContext,
+    "Current staged change context:",
+    input.stagedFileContext,
+  ].join("\n");
+}
+
+function toCommitMessageGenerationError(error: unknown): ApiRouteError {
+  if (error instanceof ApiRouteError) {
+    return error;
+  }
+
+  const message = error instanceof Error ? error.message.trim() : "";
+  const normalized = message.toLowerCase();
+
+  if (normalized.includes("not logged") || normalized.includes("login required")) {
+    return new ApiRouteError(
+      502,
+      "COMMIT_MESSAGE_GENERATION_FAILED",
+      "Codex local auth is missing. Run `codex login` and retry commit message generation.",
+    );
+  }
+
+  if (
+    normalized.includes("auth") ||
+    normalized.includes("credential") ||
+    normalized.includes("unauthorized") ||
+    normalized.includes("forbidden")
+  ) {
+    return new ApiRouteError(
+      502,
+      "COMMIT_MESSAGE_GENERATION_FAILED",
+      "Codex authentication failed. Verify local Codex login with `codex login status` and retry.",
+    );
+  }
+
+  if (
+    normalized.includes("model") &&
+    (normalized.includes("not found") ||
+      normalized.includes("unknown") ||
+      normalized.includes("unsupported") ||
+      normalized.includes("invalid"))
+  ) {
+    return new ApiRouteError(
+      502,
+      "COMMIT_MESSAGE_GENERATION_FAILED",
+      "Codex model is invalid. Ensure commit message generation uses gpt-5.3-codex-spark.",
+    );
+  }
+
+  return new ApiRouteError(
+    502,
+    "COMMIT_MESSAGE_GENERATION_FAILED",
+    message.length > 0
+      ? `Commit message generation failed: ${message}`
+      : "Commit message generation failed.",
+  );
 }
 
 export async function stageFile(requestedPath: string): Promise<ActionResponse> {
@@ -212,6 +545,70 @@ export async function commitChanges(messageInput: string): Promise<ActionRespons
       ok: true,
       message: firstLine ?? "Commit created.",
     };
+  });
+}
+
+export async function generateCommitMessage(
+  request: GenerateCommitMessageRequest = {},
+): Promise<ActionResponse> {
+  const context = await requireGitContext();
+  const draft = typeof request.draft === "string" ? request.draft.trim() : "";
+
+  return await withMutationQueue(async () => {
+    if (isTestRuntime()) {
+      return {
+        ok: true,
+        message: "update staged changes",
+      };
+    }
+
+    try {
+      await checkCodexCliAuth();
+
+      const [recentCommitSubjects, stagedFileContext] = await Promise.all([
+        getRecentCommitSubjects(context.repoRoot),
+        getStagedFileContext(),
+      ]);
+
+      const prompt = buildCommitMessagePrompt({
+        stagedFileContext,
+        recentCommitSubjects,
+        draft: draft.length > 0 ? draft : null,
+      });
+
+      const client = new Codex({ env: buildLocalCodexEnv() });
+      const thread = client.startThread({
+        model: COMMIT_MESSAGE_MODEL,
+        modelReasoningEffort: "medium",
+      });
+      const rawResponse = await thread.run(prompt);
+      const responseText = normalizeResponseText(rawResponse);
+
+      if (!responseText) {
+        throw new ApiRouteError(
+          502,
+          "COMMIT_MESSAGE_GENERATION_FAILED",
+          "Codex returned an empty commit message response.",
+        );
+      }
+
+      const suggestion = sanitizeCommitMessageSuggestion(responseText);
+
+      if (!suggestion) {
+        throw new ApiRouteError(
+          502,
+          "COMMIT_MESSAGE_GENERATION_FAILED",
+          "Codex did not return a usable commit message suggestion.",
+        );
+      }
+
+      return {
+        ok: true,
+        message: suggestion,
+      };
+    } catch (error) {
+      throw toCommitMessageGenerationError(error);
+    }
   });
 }
 

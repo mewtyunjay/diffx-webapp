@@ -15,6 +15,7 @@ import type {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   commitChanges,
+  generateCommitMessage,
   pushChanges,
   stageFile,
   stageManyFiles,
@@ -53,7 +54,7 @@ type AppShellProps = {
 };
 
 type PendingFileMutation = "stage" | "unstage";
-type FilesDockMode = "idle" | "push" | "create-upstream";
+type FilesDockMode = "idle" | "push";
 type FilesDockMessage = {
   tone: "info" | "error";
   text: string;
@@ -336,13 +337,6 @@ export function AppShell({ initialRepo }: AppShellProps) {
     setFilesDockMode("idle");
     setFilesDockMessage(null);
   }
-
-  const filesDockAction =
-    filesDockMode === "create-upstream"
-      ? "create-upstream"
-      : filesDockMode === "push"
-        ? "push"
-        : "commit";
 
   const repoQuery = useQuery({
     queryKey: queryKeys.repo,
@@ -1049,6 +1043,26 @@ export function AppShell({ initialRepo }: AppShellProps) {
     },
   });
 
+  const generateCommitMessageMutation = useMutation({
+    mutationFn: async (draft: string) => await generateCommitMessage({ draft }),
+    onMutate: () => {
+      setFilesDockMessage(null);
+    },
+    onSuccess: (response) => {
+      setCommitMessageDraft(response.message);
+      setFilesDockMessage({
+        tone: "info",
+        text: "Generated commit message with Codex 5.3 spark.",
+      });
+    },
+    onError: (error) => {
+      setFilesDockMessage({
+        tone: "error",
+        text: toUiError(error, "Unable to generate commit message.").message,
+      });
+    },
+  });
+
   const pushMutation = useMutation({
     mutationFn: async (createUpstream: boolean) =>
       await pushChanges(createUpstream ? { createUpstream: true } : {}),
@@ -1061,12 +1075,11 @@ export function AppShell({ initialRepo }: AppShellProps) {
     },
     onError: (error, createUpstream) => {
       if (error instanceof ApiRequestError && error.code === "NO_UPSTREAM" && !createUpstream) {
-        setFilesDockMode("create-upstream");
-        setFilesDockMessage({ tone: "info", text: error.message });
+        pushMutation.mutate(true);
         return;
       }
 
-      setFilesDockMode(createUpstream ? "create-upstream" : "push");
+      setFilesDockMode("push");
       setFilesDockMessage({
         tone: "error",
         text: toUiError(error, "Unable to push changes.").message,
@@ -1263,13 +1276,21 @@ export function AppShell({ initialRepo }: AppShellProps) {
     });
   }
 
-  function requestPush(createUpstream: boolean) {
+  function requestPush() {
     if (commitMutation.isPending || pushMutation.isPending) {
       return;
     }
 
     setFilesDockMessage(null);
-    pushMutation.mutate(createUpstream);
+    pushMutation.mutate(false);
+  }
+
+  function requestGenerateCommitMessage() {
+    if (generateCommitMessageMutation.isPending || commitMutation.isPending || pushMutation.isPending) {
+      return;
+    }
+
+    generateCommitMessageMutation.mutate(commitMessageDraft);
   }
 
   const trimmedCommitDraft = commitMessageDraft.trim();
@@ -1279,12 +1300,6 @@ export function AppShell({ initialRepo }: AppShellProps) {
     repo.stagedCount === 0 ||
     commitMutation.isPending ||
     pushMutation.isPending;
-
-  const commitActionLabel = !quizGateEnabled
-    ? "commit"
-    : quizValidationPassed || commitBypassActive
-      ? "commit"
-      : "open quiz";
 
   const quizPanel = (
     <QuizPanel
@@ -1376,6 +1391,8 @@ export function AppShell({ initialRepo }: AppShellProps) {
         />
 
         <SidebarShell
+          repoName={repo.repoName}
+          branch={repo.branch}
           activeTab={activeTab}
           onChangeTab={setActiveTab}
           files={files}
@@ -1384,14 +1401,13 @@ export function AppShell({ initialRepo }: AppShellProps) {
           filesError={filesUiError?.message ?? null}
           filesErrorRetryable={filesUiError?.retryable ?? false}
           pendingMutationsByPath={pendingMutationsByPath}
-          stagedCount={repo.stagedCount}
-          filesDockAction={filesDockAction}
-          filesDockMessage={filesDockMessage}
           isCommitting={commitMutation.isPending}
           isPushing={pushMutation.isPending}
+          isGeneratingCommitMessage={generateCommitMessageMutation.isPending}
           commitMessage={commitMessageDraft}
-          commitActionLabel={commitActionLabel}
-          commitActionDisabled={commitActionDisabled}
+          commitDisabled={commitActionDisabled}
+          canPush={filesDockMode === "push"}
+          commitMessageStatus={filesDockMessage}
           onCommitMessageChange={(message) => {
             setCommitMessageDraft(message);
           }}
@@ -1407,6 +1423,7 @@ export function AppShell({ initialRepo }: AppShellProps) {
           onUnstageFiles={requestUnstageMany}
           onCommitChanges={requestCommit}
           onPushChanges={requestPush}
+          onGenerateCommitMessage={requestGenerateCommitMessage}
         />
       </main>
 

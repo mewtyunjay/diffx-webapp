@@ -286,7 +286,7 @@
 .diff-content,
 .files-list-scroll,
 .actions-tab,
-.files-commit-input {
+.commit-composer-input {
   scrollbar-width: thin;
   scrollbar-color: rgba(122, 155, 168, 0.45) rgba(13, 16, 18, 0.85);
 }
@@ -294,7 +294,7 @@
 .diff-content::-webkit-scrollbar,
 .files-list-scroll::-webkit-scrollbar,
 .actions-tab::-webkit-scrollbar,
-.files-commit-input::-webkit-scrollbar {
+.commit-composer-input::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
@@ -302,14 +302,14 @@
 .diff-content::-webkit-scrollbar-track,
 .files-list-scroll::-webkit-scrollbar-track,
 .actions-tab::-webkit-scrollbar-track,
-.files-commit-input::-webkit-scrollbar-track {
+.commit-composer-input::-webkit-scrollbar-track {
   background: rgba(13, 16, 18, 0.85);
 }
 
 .diff-content::-webkit-scrollbar-thumb,
 .files-list-scroll::-webkit-scrollbar-thumb,
 .actions-tab::-webkit-scrollbar-thumb,
-.files-commit-input::-webkit-scrollbar-thumb {
+.commit-composer-input::-webkit-scrollbar-thumb {
   background: rgba(122, 155, 168, 0.45);
   border-radius: 999px;
   border: 1px solid rgba(13, 16, 18, 0.85);
@@ -318,7 +318,7 @@
 .diff-content::-webkit-scrollbar-thumb:hover,
 .files-list-scroll::-webkit-scrollbar-thumb:hover,
 .actions-tab::-webkit-scrollbar-thumb:hover,
-.files-commit-input::-webkit-scrollbar-thumb:hover {
+.commit-composer-input::-webkit-scrollbar-thumb:hover {
   background: rgba(122, 155, 168, 0.65);
 }
 
@@ -430,47 +430,98 @@
   overflow: auto;
 }
 
-.files-commit-dock {
+.commit-composer {
   display: flex;
   flex-direction: column;
+  border-top: 0.5px solid var(--color-line);
   gap: 0.8rem;
-  margin-top: auto;
-  padding: 0.4rem 0 0;
+  padding: 0.9rem 1.2rem 1.1rem;
+  background:
+    linear-gradient(180deg, rgba(16, 19, 22, 0.92) 0%, rgba(11, 14, 16, 0.95) 100%),
+    var(--color-bg-panel);
 }
 
-.files-commit-entry {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 0.6rem;
-  align-items: stretch;
+.commit-composer-repo {
+  margin: 0;
+  color: var(--color-text-dim);
+  font-size: var(--font-size-control);
+  letter-spacing: 0.08em;
 }
 
-.files-commit-input {
+.commit-composer-input-shell {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.commit-composer-input {
   border: 0.5px solid var(--color-border);
   background: transparent;
   color: var(--color-text);
-  padding: 0.55rem 0.65rem;
-  min-height: 4.6rem;
-  max-height: 4.6rem;
+  padding: 0.62rem 2.4rem 0.62rem 0.72rem;
+  min-height: 5.9rem;
+  max-height: 5.9rem;
+  width: 100%;
   resize: none;
   font: inherit;
   font-size: var(--font-size-body);
 }
 
-.files-commit-input::placeholder {
+.commit-composer-input::placeholder {
   color: var(--color-text-dim);
 }
 
-.files-commit-entry .hud-button {
-  min-width: 9rem;
+.commit-composer-generate {
+  position: absolute;
+  right: 0.45rem;
+  top: 0.42rem;
+  width: 1.6rem;
+  height: 1.6rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0.5px solid var(--color-border);
+  background: rgba(122, 155, 168, 0.08);
+  color: var(--color-text-dim);
+  font: inherit;
+  font-size: var(--font-size-micro);
+  line-height: 1;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
 }
 
-.files-commit-status {
-  align-self: center;
+.commit-composer-generate-icon {
+  width: 0.95rem;
+  height: 0.95rem;
+  pointer-events: none;
 }
 
-.files-commit-feedback {
-  margin-top: -0.2rem;
+.commit-composer-generate:hover:not(:disabled) {
+  color: var(--color-text-bright);
+  border-color: var(--color-line);
+}
+
+.commit-composer-generate:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.commit-composer-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.commit-composer-actions .hud-button {
+  min-width: 0;
+}
+
+.commit-composer-push:disabled {
+  opacity: 0.42;
+  color: var(--color-text-dim);
 }
 
 .file-group {
@@ -1213,6 +1264,7 @@
 .settings-segment-button:focus-visible,
 .settings-input:focus-visible,
 .settings-dropdown-option:focus-visible,
+.commit-composer-generate:focus-visible,
 .quiz-option-button:focus-visible {
   outline: 1px solid var(--color-primary);
   outline-offset: -1px;

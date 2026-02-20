@@ -6,6 +6,7 @@ import type { ActionResponse } from "@diffx/contracts";
 import App from "./App";
 import {
   commitChanges,
+  generateCommitMessage,
   pushChanges,
   stageFile,
   stageManyFiles,
@@ -64,6 +65,7 @@ vi.mock("./services/api/actions", () => ({
   unstageFile: vi.fn(),
   unstageManyFiles: vi.fn(),
   commitChanges: vi.fn(),
+  generateCommitMessage: vi.fn(),
   pushChanges: vi.fn(),
 }));
 
@@ -103,6 +105,7 @@ describe("App", () => {
   const unstageFileMock = vi.mocked(unstageFile);
   const unstageManyFilesMock = vi.mocked(unstageManyFiles);
   const commitChangesMock = vi.mocked(commitChanges);
+  const generateCommitMessageMock = vi.mocked(generateCommitMessage);
   const pushChangesMock = vi.mocked(pushChanges);
   const getWorkspaceMock = vi.mocked(getWorkspace);
   const setWorkspaceMock = vi.mocked(setWorkspace);
@@ -246,6 +249,7 @@ describe("App", () => {
     unstageFileMock.mockResolvedValue({ ok: true, message: "Unstaged file" });
     unstageManyFilesMock.mockResolvedValue({ ok: true, message: "Unstaged files" });
     commitChangesMock.mockResolvedValue({ ok: true, message: "Committed" });
+    generateCommitMessageMock.mockResolvedValue({ ok: true, message: "ship files dock" });
     pushChangesMock.mockResolvedValue({ ok: true, message: "Pushed" });
     getSettingsMock.mockResolvedValue(buildDefaultSettings());
     putSettingsMock.mockResolvedValue(buildDefaultSettings());
@@ -696,7 +700,29 @@ describe("App", () => {
     });
   });
 
-  it("offers create-upstream push action when push reports missing upstream", async () => {
+  it("generates commit message suggestion from composer icon", async () => {
+    getRepoSummaryMock.mockResolvedValue(buildGitRepoSummary({ stagedCount: 1 }));
+
+    getChangedFilesMock.mockResolvedValue([
+      { path: "frontend/src/App.tsx", status: "staged", contentHash: "hash-frontend-app" },
+    ]);
+
+    getHealthMock.mockResolvedValue({ ok: true });
+
+    renderWithQueryClient();
+
+    const messageBox = await screen.findByPlaceholderText("describe why this change exists");
+
+    fireEvent.click(screen.getByRole("button", { name: "Generate commit message (Codex 5.3 spark)" }));
+
+    await waitFor(() => {
+      expect(generateCommitMessageMock).toHaveBeenCalledWith({ draft: "" });
+    });
+
+    expect(messageBox).toHaveValue("ship files dock");
+  });
+
+  it("silently retries push with upstream creation when upstream is missing", async () => {
     getRepoSummaryMock.mockResolvedValue(
       buildGitRepoSummary({ stagedCount: 1 }),
     );
@@ -744,11 +770,6 @@ describe("App", () => {
       expect(pushChangesMock).toHaveBeenCalledWith({});
     });
 
-    expect(await screen.findByText("No upstream exists for 'main'. Should I create one with the same name?")).toBeInTheDocument();
-
-    const createUpstreamButton = screen.getByRole("button", { name: "create upstream + push" });
-    fireEvent.click(createUpstreamButton);
-
     await waitFor(() => {
       expect(pushChangesMock).toHaveBeenLastCalledWith({ createUpstream: true });
     });
@@ -777,7 +798,11 @@ describe("App", () => {
 
     renderWithQueryClient();
 
-    fireEvent.click(await screen.findByRole("button", { name: "open quiz" }));
+    const openQuizCommitButton = await screen.findByRole("button", { name: "commit" });
+    await waitFor(() => {
+      expect(openQuizCommitButton).toBeEnabled();
+    });
+    fireEvent.click(openQuizCommitButton);
 
     expect(createQuizSessionMock).not.toHaveBeenCalled();
 
@@ -836,7 +861,11 @@ describe("App", () => {
     const messageBox = await screen.findByPlaceholderText("describe why this change exists");
     fireEvent.change(messageBox, { target: { value: "ship files dock" } });
 
-    fireEvent.click(screen.getByRole("button", { name: "open quiz" }));
+    const commitToOpenQuizButton = screen.getByRole("button", { name: "commit" });
+    await waitFor(() => {
+      expect(commitToOpenQuizButton).toBeEnabled();
+    });
+    fireEvent.click(commitToOpenQuizButton);
 
     expect(createQuizSessionMock).not.toHaveBeenCalled();
 
