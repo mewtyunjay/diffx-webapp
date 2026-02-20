@@ -7,10 +7,10 @@ import { QuizPanel } from "./QuizPanel";
 const QUIZ_SETTINGS: QuizSettings = {
   gateEnabled: true,
   questionCount: 4,
-  scope: "staged",
+  scope: "all_changes",
   validationMode: "answer_all",
   scoreThreshold: null,
-  providerPreference: "auto",
+  providerPreference: "codex",
 };
 
 function buildSession(status: QuizSession["status"]): QuizSession {
@@ -19,7 +19,6 @@ function buildSession(status: QuizSession["status"]): QuizSession {
     status,
     sourceFingerprint: "fingerprint",
     commitMessageDraft: "wire quiz",
-    selectedPath: "frontend/src/App.tsx",
     createdAt: "2026-02-17T00:00:00.000Z",
     updatedAt: "2026-02-17T00:00:00.000Z",
     progress: {
@@ -68,143 +67,105 @@ function buildSession(status: QuizSession["status"]): QuizSession {
   };
 }
 
+type RenderOverrides = Partial<React.ComponentProps<typeof QuizPanel>>;
+
+function renderQuizPanel(overrides: RenderOverrides = {}) {
+  const defaultProps: React.ComponentProps<typeof QuizPanel> = {
+    quizSettings: QUIZ_SETTINGS,
+    session: null,
+    isLoadingSession: false,
+    isCreatingSession: false,
+    isSavingSettings: false,
+    isSubmittingAnswers: false,
+    isValidating: false,
+    streamError: null,
+    commitUnlocked: false,
+    bypassAvailable: false,
+    bypassArmed: false,
+    onStartQuiz: vi.fn(),
+    onClearQuiz: vi.fn(),
+    onSelectAnswer: vi.fn(),
+    onValidateQuiz: vi.fn(),
+    onBypassOnce: vi.fn(),
+    onUpdateQuizSettings: vi.fn(),
+  };
+
+  const props = {
+    ...defaultProps,
+    ...overrides,
+  };
+
+  render(<QuizPanel {...props} />);
+  return props;
+}
+
 describe("QuizPanel", () => {
   afterEach(() => {
     cleanup();
   });
 
-  it("renders start state when no session exists", () => {
-    const onStartQuiz = vi.fn();
+  it("renders start state and starts generation", () => {
+    const props = renderQuizPanel();
 
-    render(
-      <QuizPanel
-        quizSettings={QUIZ_SETTINGS}
-        commitMessageDraft="ship files dock"
-        session={null}
-        isLoadingSession={false}
-        isCreatingSession={false}
-        isSubmittingAnswers={false}
-        isValidating={false}
-        streamError={null}
-        commitUnlocked={false}
-        bypassAvailable={false}
-        bypassArmed={false}
-        onStartQuiz={onStartQuiz}
-        onRegenerateQuiz={() => undefined}
-        onSelectAnswer={() => undefined}
-        onValidateQuiz={() => undefined}
-        onBypassOnce={() => undefined}
-        onOpenSettings={() => undefined}
-      />,
-    );
+    expect(screen.getByText("Precommit Quiz")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "generate tests" }));
-    expect(onStartQuiz).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "generate quiz" }));
+    expect(props.onStartQuiz).toHaveBeenCalledTimes(1);
   });
 
-  it("shows preflight summary and allows start without commit draft", () => {
-    const onStartQuiz = vi.fn();
-    const onOpenSettings = vi.fn();
+  it("updates inline quiz settings before generation", () => {
+    const onUpdateQuizSettings = vi.fn();
 
-    render(
-      <QuizPanel
-        quizSettings={{
-          gateEnabled: true,
-          questionCount: 5,
-          scope: "all_changes",
-          validationMode: "score_threshold",
-          scoreThreshold: 4,
-          providerPreference: "auto",
-        }}
-        commitMessageDraft=""
-        session={null}
-        isLoadingSession={false}
-        isCreatingSession={false}
-        isSubmittingAnswers={false}
-        isValidating={false}
-        streamError={null}
-        commitUnlocked={false}
-        bypassAvailable={false}
-        bypassArmed={false}
-        onStartQuiz={onStartQuiz}
-        onRegenerateQuiz={() => undefined}
-        onSelectAnswer={() => undefined}
-        onValidateQuiz={() => undefined}
-        onBypassOnce={() => undefined}
-        onOpenSettings={onOpenSettings}
-      />,
-    );
+    renderQuizPanel({
+      quizSettings: {
+        ...QUIZ_SETTINGS,
+        validationMode: "score_threshold",
+        scoreThreshold: 2,
+      },
+      onUpdateQuizSettings,
+    });
 
-    expect(screen.getByText("quiz preflight")).toBeInTheDocument();
-    expect(screen.getByText("No draft message yet (optional for quiz start)."))
-      .toBeInTheDocument();
-    expect(screen.getByText("score threshold (4 correct answers)")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("radio", { name: "staged only" }));
+    expect(onUpdateQuizSettings).toHaveBeenCalledWith({
+      ...QUIZ_SETTINGS,
+      validationMode: "score_threshold",
+      scoreThreshold: 2,
+      scope: "staged",
+    });
 
-    fireEvent.click(screen.getByRole("button", { name: "generate tests" }));
-    expect(onStartQuiz).toHaveBeenCalledTimes(1);
-
-    fireEvent.click(screen.getByRole("button", { name: "quiz settings" }));
-    expect(onOpenSettings).toHaveBeenCalledTimes(1);
+    fireEvent.change(screen.getByLabelText("Question count"), { target: { value: "5" } });
+    expect(onUpdateQuizSettings).toHaveBeenCalledWith({
+      ...QUIZ_SETTINGS,
+      validationMode: "score_threshold",
+      scoreThreshold: 2,
+      questionCount: 5,
+    });
   });
 
-  it("renders failed state with bypass action", () => {
-    const onBypassOnce = vi.fn();
-
-    render(
-      <QuizPanel
-        quizSettings={QUIZ_SETTINGS}
-        commitMessageDraft="ship files dock"
-        session={buildSession("failed")}
-        isLoadingSession={false}
-        isCreatingSession={false}
-        isSubmittingAnswers={false}
-        isValidating={false}
-        streamError={null}
-        commitUnlocked={false}
-        bypassAvailable
-        bypassArmed={false}
-        onStartQuiz={() => undefined}
-        onRegenerateQuiz={() => undefined}
-        onSelectAnswer={() => undefined}
-        onValidateQuiz={() => undefined}
-        onBypassOnce={onBypassOnce}
-        onOpenSettings={() => undefined}
-      />,
-    );
+  it("renders failed state with bypass and clear actions", () => {
+    const props = renderQuizPanel({
+      session: buildSession("failed"),
+      bypassAvailable: true,
+    });
 
     fireEvent.click(screen.getByRole("button", { name: "bypass once" }));
-    expect(onBypassOnce).toHaveBeenCalledTimes(1);
+    expect(props.onBypassOnce).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "clear quiz" }));
+    expect(props.onClearQuiz).toHaveBeenCalledTimes(1);
   });
 
-  it("enables validation when all questions are answered", () => {
-    const onValidateQuiz = vi.fn();
+  it("enables validation when all questions are answered and supports clearing", () => {
     const session = buildSession("ready");
     session.answers = { "q-1": 0 };
 
-    render(
-      <QuizPanel
-        quizSettings={QUIZ_SETTINGS}
-        commitMessageDraft="ship files dock"
-        session={session}
-        isLoadingSession={false}
-        isCreatingSession={false}
-        isSubmittingAnswers={false}
-        isValidating={false}
-        streamError={null}
-        commitUnlocked={false}
-        bypassAvailable={false}
-        bypassArmed={false}
-        onStartQuiz={() => undefined}
-        onRegenerateQuiz={() => undefined}
-        onSelectAnswer={() => undefined}
-        onValidateQuiz={onValidateQuiz}
-        onBypassOnce={() => undefined}
-        onOpenSettings={() => undefined}
-      />,
-    );
+    const props = renderQuizPanel({ session });
 
     fireEvent.click(screen.getByRole("button", { name: "validate quiz" }));
-    expect(onValidateQuiz).toHaveBeenCalledTimes(1);
+    expect(props.onValidateQuiz).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "clear quiz" }));
+    expect(props.onClearQuiz).toHaveBeenCalledTimes(1);
   });
 
   it("shows red/green option feedback and score after validation", () => {
@@ -220,27 +181,7 @@ describe("QuizPanel", () => {
       scoreThreshold: null,
     };
 
-    render(
-      <QuizPanel
-        quizSettings={QUIZ_SETTINGS}
-        commitMessageDraft="ship files dock"
-        session={session}
-        isLoadingSession={false}
-        isCreatingSession={false}
-        isSubmittingAnswers={false}
-        isValidating={false}
-        streamError={null}
-        commitUnlocked={false}
-        bypassAvailable={false}
-        bypassArmed={false}
-        onStartQuiz={() => undefined}
-        onRegenerateQuiz={() => undefined}
-        onSelectAnswer={() => undefined}
-        onValidateQuiz={() => undefined}
-        onBypassOnce={() => undefined}
-        onOpenSettings={() => undefined}
-      />,
-    );
+    renderQuizPanel({ session });
 
     expect(screen.getByRole("button", { name: /Alpha/i })).toHaveClass("quiz-option-button-correct");
     expect(screen.getByRole("button", { name: /Beta/i })).toHaveClass("quiz-option-button-incorrect");

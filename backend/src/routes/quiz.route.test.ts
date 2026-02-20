@@ -80,7 +80,7 @@ describe("/api/quiz", () => {
         scope: "all_changes",
         validationMode: "answer_all",
         scoreThreshold: null,
-        providerPreference: "auto",
+        providerPreference: "codex",
       },
     });
     resetQuizSessionsForTests();
@@ -90,7 +90,7 @@ describe("/api/quiz", () => {
   it("rejects session creation without commit message", async () => {
     const app = createApp();
 
-    const response = await request(app).post("/api/quiz/sessions").send({ selectedPath: null });
+    const response = await request(app).post("/api/quiz/sessions").send({});
 
     expect(response.status).toBe(400);
     expect(response.body).toMatchObject({ code: "INVALID_COMMIT_MESSAGE" });
@@ -101,7 +101,6 @@ describe("/api/quiz", () => {
 
     const response = await request(app).post("/api/quiz/sessions").send({
       commitMessage: "",
-      selectedPath: null,
     });
 
     expect(response.status).toBe(201);
@@ -113,7 +112,6 @@ describe("/api/quiz", () => {
 
     const createResponse = await request(app).post("/api/quiz/sessions").send({
       commitMessage: "wire quiz mode",
-      selectedPath: null,
     });
 
     expect(createResponse.status).toBe(201);
@@ -134,8 +132,6 @@ describe("/api/quiz", () => {
     expect(response.body).toMatchObject({
       providers: [
         { id: "codex", available: true },
-        { id: "claude", available: false },
-        { id: "opencode", available: false },
       ],
     });
   });
@@ -145,7 +141,6 @@ describe("/api/quiz", () => {
 
     const createResponse = await request(app).post("/api/quiz/sessions").send({
       commitMessage: "wire quiz gate",
-      selectedPath: null,
     });
 
     expect(createResponse.status).toBe(201);
@@ -177,7 +172,6 @@ describe("/api/quiz", () => {
 
     const createResponse = await request(app).post("/api/quiz/sessions").send({
       commitMessage: "wire quiz gate",
-      selectedPath: null,
     });
 
     expect(createResponse.status).toBe(201);
@@ -223,7 +217,6 @@ describe("/api/quiz", () => {
 
     const createResponse = await request(app).post("/api/quiz/sessions").send({
       commitMessage: "wire quiz gate",
-      selectedPath: null,
     });
 
     expect(createResponse.status).toBe(201);

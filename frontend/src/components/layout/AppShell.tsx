@@ -36,6 +36,7 @@ import {
 } from "../../services/api/quiz";
 import { getRepoSummary } from "../../services/api/repo";
 import { getSettings, putSettings } from "../../services/api/settings";
+import { getWorkspace, pickWorkspace, setWorkspace } from "../../services/api/workspace";
 import { queryKeys } from "../../services/query-keys";
 import { DiffPanel } from "../diff/DiffPanel";
 import { QuizPanel } from "../diff/QuizPanel";
@@ -45,6 +46,7 @@ import type { SidebarTabId } from "../sidebar/tabRegistry";
 import { SettingsModal } from "./SettingsModal";
 import { StatusBar } from "./StatusBar";
 import { Topbar } from "./Topbar";
+import { WorkspaceModal } from "./WorkspaceModal";
 
 type AppShellProps = {
   initialRepo: RepoSummary;
@@ -65,10 +67,10 @@ const DEFAULT_SETTINGS: AppSettings = {
   quiz: {
     gateEnabled: false,
     questionCount: 4,
-    scope: "staged",
+    scope: "all_changes",
     validationMode: "answer_all",
     scoreThreshold: null,
-    providerPreference: "auto",
+    providerPreference: "codex",
   },
 };
 
@@ -272,6 +274,8 @@ export function AppShell({ initialRepo }: AppShellProps) {
   const [filesDockMessage, setFilesDockMessage] = useState<FilesDockMessage>(null);
   const [commitMessageDraft, setCommitMessageDraft] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [workspaceOpen, setWorkspaceOpen] = useState(false);
+  const [workspaceError, setWorkspaceError] = useState<string | null>(null);
   const [activeQuizSessionId, setActiveQuizSessionId] = useState<string | null>(null);
   const [quizSessionLocalSignature, setQuizSessionLocalSignature] = useState<string | null>(null);
   const [quizStreamError, setQuizStreamError] = useState<string | null>(null);
@@ -375,10 +379,21 @@ export function AppShell({ initialRepo }: AppShellProps) {
     staleTime: 30_000,
   });
 
+  const workspaceQuery = useQuery({
+    queryKey: queryKeys.workspace,
+    queryFn: getWorkspace,
+    enabled: workspaceOpen,
+    staleTime: 60_000,
+    placeholderData: (previousData) => previousData,
+  });
+
   const settings = settingsQuery.data ?? DEFAULT_SETTINGS;
   const settingsUiError = settingsQuery.isError ? toUiError(settingsQuery.error) : null;
   const providersUiError = providerStatusQuery.isError
     ? toUiError(providerStatusQuery.error, "Unable to load provider statuses.")
+    : null;
+  const workspaceUiError = workspaceQuery.isError
+    ? toUiError(workspaceQuery.error, "Unable to load current workspace folder.")
     : null;
 
   const files = filesQuery.data ?? [];
@@ -472,7 +487,7 @@ export function AppShell({ initialRepo }: AppShellProps) {
   const diffDetailQuery = useQuery({
     queryKey:
       selectedFile && selectedScope
-        ? queryKeys.diffDetail(selectedFile.path, 3, selectedFile.contentHash)
+        ? queryKeys.diffDetail(selectedFile.path, selectedScope, 3, selectedFile.contentHash)
         : ["diffDetail", "none"],
     queryFn: async ({ signal }) =>
       await getDiffDetail(
@@ -533,31 +548,12 @@ export function AppShell({ initialRepo }: AppShellProps) {
           exact: true,
         }),
         queryClient.cancelQueries({ queryKey: queryKeys.diffDetailPath(path) }),
-        queryClient.cancelQueries({ queryKey: queryKeys.fileContents(path, "staged", "old"), exact: true }),
-        queryClient.cancelQueries({ queryKey: queryKeys.fileContents(path, "staged", "new"), exact: true }),
-        queryClient.cancelQueries({ queryKey: queryKeys.fileContents(path, "unstaged", "old"), exact: true }),
-        queryClient.cancelQueries({ queryKey: queryKeys.fileContents(path, "unstaged", "new"), exact: true }),
       ]),
     ]);
   }
 
   async function cancelFileMutationQueries(path: string) {
     await cancelFileMutationQueriesForPaths([path]);
-  }
-
-  function clearFileMutationContentsForPaths(paths: string[]) {
-    const uniquePaths = [...new Set(paths)];
-
-    for (const path of uniquePaths) {
-      queryClient.removeQueries({ queryKey: queryKeys.fileContents(path, "staged", "old"), exact: true });
-      queryClient.removeQueries({ queryKey: queryKeys.fileContents(path, "staged", "new"), exact: true });
-      queryClient.removeQueries({ queryKey: queryKeys.fileContents(path, "unstaged", "old"), exact: true });
-      queryClient.removeQueries({ queryKey: queryKeys.fileContents(path, "unstaged", "new"), exact: true });
-    }
-  }
-
-  function clearFileMutationContents(path: string) {
-    clearFileMutationContentsForPaths([path]);
   }
 
   function revalidateAfterFileMutations(paths: string[]) {
@@ -577,10 +573,6 @@ export function AppShell({ initialRepo }: AppShellProps) {
           exact: true,
         }),
         queryClient.invalidateQueries({ queryKey: queryKeys.diffDetailPath(path) }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.fileContents(path, "staged", "old"), exact: true }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.fileContents(path, "staged", "new"), exact: true }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.fileContents(path, "unstaged", "old"), exact: true }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.fileContents(path, "unstaged", "new"), exact: true }),
       ]),
     ]);
   }
@@ -607,7 +599,6 @@ export function AppShell({ initialRepo }: AppShellProps) {
       queryClient.invalidateQueries({ queryKey: queryKeys.filesRoot }),
       queryClient.invalidateQueries({ queryKey: ["diff"] }),
       queryClient.invalidateQueries({ queryKey: queryKeys.diffDetailRoot }),
-      queryClient.invalidateQueries({ queryKey: ["fileContents"] }),
       queryClient.invalidateQueries({ queryKey: queryKeys.health }),
     ]);
   }
@@ -615,6 +606,62 @@ export function AppShell({ initialRepo }: AppShellProps) {
   function setQuizSessionCache(session: QuizSession) {
     queryClient.setQueryData(queryKeys.quizSession(session.id), session);
   }
+
+  async function applyWorkspaceSwitch(nextWorkspace: { repoRoot: string }) {
+    queryClient.setQueryData(queryKeys.workspace, nextWorkspace);
+    queryClient.removeQueries({ queryKey: queryKeys.quizSessionRoot });
+
+    setWorkspaceOpen(false);
+    setSelectedFileRef(null);
+    setActiveQuizSessionId(null);
+    setQuizSessionLocalSignature(null);
+    setQuizStreamError(null);
+    setBypassArmed(false);
+    setQuizUnlockSignature(null);
+    setPaneMode("diff");
+    setFilesDockMode("idle");
+    setFilesDockMessage({
+      tone: "info",
+      text: `Opened ${nextWorkspace.repoRoot}`,
+    });
+
+    await refreshQueries();
+  }
+
+  const pickWorkspaceMutation = useMutation({
+    mutationFn: async () => await pickWorkspace(),
+    onMutate: () => {
+      setWorkspaceError(null);
+    },
+    onSuccess: async (nextWorkspace) => {
+      await applyWorkspaceSwitch(nextWorkspace);
+    },
+    onError: (error) => {
+      if (error instanceof ApiRequestError && error.code === "WORKSPACE_PICK_CANCELLED") {
+        return;
+      }
+
+      const uiError = toUiError(error, "Unable to open selected folder.");
+      setWorkspaceError(uiError.message);
+
+      if (error instanceof ApiRequestError && error.code === "WORKSPACE_PICK_UNSUPPORTED") {
+        setWorkspaceOpen(true);
+      }
+    },
+  });
+
+  const workspaceMutation = useMutation({
+    mutationFn: async (repoRoot: string) => await setWorkspace({ repoRoot }),
+    onMutate: () => {
+      setWorkspaceError(null);
+    },
+    onSuccess: async (nextWorkspace) => {
+      await applyWorkspaceSwitch(nextWorkspace);
+    },
+    onError: (error) => {
+      setWorkspaceError(toUiError(error, "Unable to open selected folder.").message);
+    },
+  });
 
   const settingsMutation = useMutation({
     mutationFn: async (nextSettings: AppSettings) => await putSettings(nextSettings),
@@ -641,7 +688,7 @@ export function AppShell({ initialRepo }: AppShellProps) {
   });
 
   const createQuizSessionMutation = useMutation({
-    mutationFn: async (params: { commitMessage: string; selectedPath: string | null }) =>
+    mutationFn: async (params: { commitMessage: string }) =>
       await createQuizSession(params),
     onMutate: () => {
       setQuizStreamError(null);
@@ -760,7 +807,9 @@ export function AppShell({ initialRepo }: AppShellProps) {
         queryClient.getQueryData<DiffSummaryResponse>(queryKeys.diff(path, "unstaged", 3, contentHash)),
       );
       const unstagedDiffDetail = copyDiffDetailCache(
-        queryClient.getQueryData<DiffDetailResponse>(queryKeys.diffDetail(path, 3, contentHash)),
+        queryClient.getQueryData<DiffDetailResponse>(
+          queryKeys.diffDetail(path, "unstaged", 3, contentHash),
+        ),
       );
 
       if (unstagedDiff) {
@@ -768,12 +817,17 @@ export function AppShell({ initialRepo }: AppShellProps) {
       }
 
       if (unstagedDiffDetail) {
-        queryClient.setQueryData(queryKeys.diffDetail(path, 3, contentHash), unstagedDiffDetail);
+        queryClient.setQueryData(
+          queryKeys.diffDetail(path, "staged", 3, contentHash),
+          unstagedDiffDetail,
+        );
       }
 
       queryClient.removeQueries({ queryKey: queryKeys.diff(path, "unstaged", 3, contentHash), exact: true });
-      clearFileMutationContents(path);
-
+      queryClient.removeQueries({
+        queryKey: queryKeys.diffDetail(path, "unstaged", 3, contentHash),
+        exact: true,
+      });
       if (selectedFile && selectedFile.path === path) {
         const matching = nextFiles.find((file) => file.path === path && file.status === "staged");
         if (matching) {
@@ -803,7 +857,9 @@ export function AppShell({ initialRepo }: AppShellProps) {
           queryClient.getQueryData<DiffSummaryResponse>(queryKeys.diff(path, "unstaged", 3, contentHash)),
         );
         const unstagedDiffDetail = copyDiffDetailCache(
-          queryClient.getQueryData<DiffDetailResponse>(queryKeys.diffDetail(path, 3, contentHash)),
+          queryClient.getQueryData<DiffDetailResponse>(
+            queryKeys.diffDetail(path, "unstaged", 3, contentHash),
+          ),
         );
 
         if (unstagedDiff) {
@@ -811,13 +867,18 @@ export function AppShell({ initialRepo }: AppShellProps) {
         }
 
         if (unstagedDiffDetail) {
-          queryClient.setQueryData(queryKeys.diffDetail(path, 3, contentHash), unstagedDiffDetail);
+          queryClient.setQueryData(
+            queryKeys.diffDetail(path, "staged", 3, contentHash),
+            unstagedDiffDetail,
+          );
         }
 
         queryClient.removeQueries({ queryKey: queryKeys.diff(path, "unstaged", 3, contentHash), exact: true });
+        queryClient.removeQueries({
+          queryKey: queryKeys.diffDetail(path, "unstaged", 3, contentHash),
+          exact: true,
+        });
       }
-
-      clearFileMutationContentsForPaths(uniquePaths);
 
       if (selectedFile && pathSet.has(selectedFile.path)) {
         const matching = nextFiles.find((file) => file.path === selectedFile.path && file.status === "staged");
@@ -842,7 +903,9 @@ export function AppShell({ initialRepo }: AppShellProps) {
         queryClient.getQueryData<DiffSummaryResponse>(queryKeys.diff(path, "staged", 3, contentHash)),
       );
       const stagedDiffDetail = copyDiffDetailCache(
-        queryClient.getQueryData<DiffDetailResponse>(queryKeys.diffDetail(path, 3, contentHash)),
+        queryClient.getQueryData<DiffDetailResponse>(
+          queryKeys.diffDetail(path, "staged", 3, contentHash),
+        ),
       );
 
       const nextFiles = updateFilesAndRepo((currentFiles) => {
@@ -855,12 +918,17 @@ export function AppShell({ initialRepo }: AppShellProps) {
       }
 
       if (stagedDiffDetail) {
-        queryClient.setQueryData(queryKeys.diffDetail(path, 3, contentHash), stagedDiffDetail);
+        queryClient.setQueryData(
+          queryKeys.diffDetail(path, "unstaged", 3, contentHash),
+          stagedDiffDetail,
+        );
       }
 
       queryClient.removeQueries({ queryKey: queryKeys.diff(path, "staged", 3, contentHash), exact: true });
-      clearFileMutationContents(path);
-
+      queryClient.removeQueries({
+        queryKey: queryKeys.diffDetail(path, "staged", 3, contentHash),
+        exact: true,
+      });
       if (selectedFile && selectedFile.path === path && selectedFile.status === "staged") {
         const matching = nextFiles.find((file) => file.path === path && file.status !== "staged");
         setSelectedFileRef(matching ? toSelectedFileRef(matching) : null);
@@ -896,7 +964,7 @@ export function AppShell({ initialRepo }: AppShellProps) {
         uniquePaths.map((path) => {
           const contentHash = contentHashByPath.get(path) ?? "none";
           const cached = queryClient.getQueryData<DiffDetailResponse>(
-            queryKeys.diffDetail(path, 3, contentHash),
+            queryKeys.diffDetail(path, "staged", 3, contentHash),
           );
 
           return [path, copyDiffDetailCache(cached)] as const;
@@ -926,13 +994,18 @@ export function AppShell({ initialRepo }: AppShellProps) {
         }
 
         if (stagedDiffDetail) {
-          queryClient.setQueryData(queryKeys.diffDetail(path, 3, contentHash), stagedDiffDetail);
+          queryClient.setQueryData(
+            queryKeys.diffDetail(path, "unstaged", 3, contentHash),
+            stagedDiffDetail,
+          );
         }
 
         queryClient.removeQueries({ queryKey: queryKeys.diff(path, "staged", 3, contentHash), exact: true });
+        queryClient.removeQueries({
+          queryKey: queryKeys.diffDetail(path, "staged", 3, contentHash),
+          exact: true,
+        });
       }
-
-      clearFileMutationContentsForPaths(uniquePaths);
 
       if (selectedFile && selectedFile.status === "staged" && pathSet.has(selectedFile.path)) {
         const matching = nextFiles.find(
@@ -1043,6 +1116,15 @@ export function AppShell({ initialRepo }: AppShellProps) {
     unstageManyMutation.mutate(acceptedPaths);
   }
 
+  function requestWorkspacePick() {
+    if (workspaceMutation.isPending || pickWorkspaceMutation.isPending) {
+      return;
+    }
+
+    setWorkspaceError(null);
+    pickWorkspaceMutation.mutate();
+  }
+
   function startOrResumeQuiz(message: string) {
     const normalizedMessage = message.trim();
 
@@ -1072,7 +1154,6 @@ export function AppShell({ initialRepo }: AppShellProps) {
 
     createQuizSessionMutation.mutate({
       commitMessage: normalizedMessage,
-      selectedPath: selectedFile?.path ?? null,
     });
   }
 
@@ -1120,14 +1201,22 @@ export function AppShell({ initialRepo }: AppShellProps) {
     });
   }
 
-  function requestQuizRegeneration() {
-    const message = commitMessageDraft.trim();
+  function requestQuizClear() {
+    if (activeQuizSessionId) {
+      queryClient.removeQueries({ queryKey: queryKeys.quizSession(activeQuizSessionId), exact: true });
+    }
 
+    setActiveQuizSessionId(null);
+    setQuizSessionLocalSignature(null);
+    setQuizStreamError(null);
     setBypassArmed(false);
     setQuizUnlockSignature(null);
-    createQuizSessionMutation.mutate({
-      commitMessage: message,
-      selectedPath: selectedFile?.path ?? null,
+    setFilesDockMessage(null);
+  }
+
+  function requestInlineQuizSettingsUpdate(nextQuizSettings: AppSettings["quiz"]) {
+    settingsMutation.mutate({
+      quiz: nextQuizSettings,
     });
   }
 
@@ -1170,7 +1259,7 @@ export function AppShell({ initialRepo }: AppShellProps) {
     setPaneMode("quiz");
     setFilesDockMessage({
       tone: "info",
-      text: "Press generate tests in Quiz to start validation.",
+      text: "Press generate quiz in Quiz to start validation.",
     });
   }
 
@@ -1200,10 +1289,10 @@ export function AppShell({ initialRepo }: AppShellProps) {
   const quizPanel = (
     <QuizPanel
       quizSettings={settings.quiz}
-      commitMessageDraft={commitMessageDraft}
       session={quizSession}
       isLoadingSession={Boolean(activeQuizSessionId) && quizSessionQuery.isPending}
       isCreatingSession={createQuizSessionMutation.isPending}
+      isSavingSettings={settingsMutation.isPending}
       isSubmittingAnswers={submitQuizAnswersMutation.isPending}
       isValidating={validateQuizMutation.isPending}
       streamError={quizStreamError}
@@ -1213,16 +1302,44 @@ export function AppShell({ initialRepo }: AppShellProps) {
       onStartQuiz={() => {
         startOrResumeQuiz(commitMessageDraft);
       }}
-      onRegenerateQuiz={requestQuizRegeneration}
+      onClearQuiz={requestQuizClear}
       onSelectAnswer={requestQuizAnswer}
       onValidateQuiz={requestQuizValidation}
       onBypassOnce={requestQuizBypass}
-      onOpenSettings={() => setSettingsOpen(true)}
+      onUpdateQuizSettings={requestInlineQuizSettingsUpdate}
     />
   );
 
   if (repo.mode === "non-git") {
-    return <NonGitGate repoName={repo.repoName} />;
+    return (
+      <>
+        <NonGitGate
+          repoName={repo.repoName}
+          onPickFolder={() => {
+            requestWorkspacePick();
+          }}
+          onEnterPath={() => {
+            setWorkspaceError(null);
+            setWorkspaceOpen(true);
+          }}
+          isPicking={pickWorkspaceMutation.isPending}
+        />
+        <WorkspaceModal
+          open={workspaceOpen}
+          currentPath={workspaceQuery.data?.repoRoot ?? ""}
+          isLoadingPath={workspaceOpen && workspaceQuery.isPending && !workspaceQuery.data}
+          isSaving={workspaceMutation.isPending}
+          error={workspaceError ?? workspaceUiError?.message ?? null}
+          onClose={() => {
+            setWorkspaceError(null);
+            setWorkspaceOpen(false);
+          }}
+          onSave={(repoRoot) => {
+            workspaceMutation.mutate(repoRoot);
+          }}
+        />
+      </>
+    );
   }
 
   return (
@@ -1231,6 +1348,7 @@ export function AppShell({ initialRepo }: AppShellProps) {
         repo={repo}
         onRefresh={() => void refreshQueries()}
         onOpenSettings={() => setSettingsOpen(true)}
+        onPickWorkspace={requestWorkspacePick}
         quizGateEnabled={settings.quiz.gateEnabled}
       />
 
@@ -1242,6 +1360,7 @@ export function AppShell({ initialRepo }: AppShellProps) {
           onPaneModeChange={requestPaneModeChange}
           viewMode={viewMode}
           onViewModeChange={setViewMode}
+          onOpenSettings={() => setSettingsOpen(true)}
           onPreviousFile={() => {
             if (!canGoPrevious) return;
             setSelectedFileRef(toSelectedFileRef(files[resolvedSelectedIndex - 1]));
@@ -1306,6 +1425,21 @@ export function AppShell({ initialRepo }: AppShellProps) {
         onClose={() => setSettingsOpen(false)}
         onSave={(nextSettings) => {
           settingsMutation.mutate(nextSettings);
+        }}
+      />
+
+      <WorkspaceModal
+        open={workspaceOpen}
+        currentPath={workspaceQuery.data?.repoRoot ?? ""}
+        isLoadingPath={workspaceOpen && workspaceQuery.isPending && !workspaceQuery.data}
+        isSaving={workspaceMutation.isPending}
+        error={workspaceError ?? workspaceUiError?.message ?? null}
+        onClose={() => {
+          setWorkspaceError(null);
+          setWorkspaceOpen(false);
+        }}
+        onSave={(repoRoot) => {
+          workspaceMutation.mutate(repoRoot);
         }}
       />
 

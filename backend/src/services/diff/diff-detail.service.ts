@@ -41,9 +41,11 @@ export async function getDiffDetail(
     };
   }
 
+  const oldPath = summary.file.oldPath ?? requestedPath;
+  const newPath = summary.file.newPath ?? requestedPath;
   const [oldContentsResult, newContentsResult] = await Promise.allSettled([
-    getLazyFileContents(requestedPath, scope, "old"),
-    getLazyFileContents(requestedPath, scope, "new"),
+    getLazyFileContents(oldPath, scope, "old"),
+    getLazyFileContents(newPath, scope, "new"),
   ]);
 
   const old =

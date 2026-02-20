@@ -1,11 +1,30 @@
-import type { QuizSession, QuizSettings } from "@diffx/contracts";
+import type {
+  QuizGenerationScope,
+  QuizSession,
+  QuizSettings,
+  QuizValidationMode,
+} from "@diffx/contracts";
+
+const MIN_QUESTION_COUNT = 1;
+const MAX_QUESTION_COUNT = 12;
+
+const SCOPE_OPTIONS: Array<{ value: QuizGenerationScope; label: string }> = [
+  { value: "all_changes", label: "all files" },
+  { value: "staged", label: "staged only" },
+];
+
+const VALIDATION_OPTIONS: Array<{ value: QuizValidationMode; label: string }> = [
+  { value: "answer_all", label: "answer all" },
+  { value: "pass_all", label: "pass all" },
+  { value: "score_threshold", label: "score threshold" },
+];
 
 type QuizPanelProps = {
   quizSettings: QuizSettings;
-  commitMessageDraft: string;
   session: QuizSession | null;
   isLoadingSession: boolean;
   isCreatingSession: boolean;
+  isSavingSettings: boolean;
   isSubmittingAnswers: boolean;
   isValidating: boolean;
   streamError: string | null;
@@ -13,11 +32,11 @@ type QuizPanelProps = {
   bypassAvailable: boolean;
   bypassArmed: boolean;
   onStartQuiz: () => void;
-  onRegenerateQuiz: () => void;
+  onClearQuiz: () => void;
   onSelectAnswer: (questionId: string, optionIndex: number) => void;
   onValidateQuiz: () => void;
   onBypassOnce: () => void;
-  onOpenSettings: () => void;
+  onUpdateQuizSettings: (nextQuizSettings: QuizSettings) => void;
 };
 
 function toValidationMessage(session: QuizSession): string | null {
@@ -35,10 +54,6 @@ function toValidationMessage(session: QuizSession): string | null {
   }
 
   return `${result.mode}: ${result.passed ? "passed" : "not passed"} (${scoreText})`;
-}
-
-function toScopeSummary(settings: QuizSettings): string {
-  return settings.scope === "all_changes" ? "all changes" : "staged changes";
 }
 
 function toValidationPolicySummary(settings: QuizSettings): string {
@@ -71,12 +86,28 @@ function toResultSummary(session: QuizSession): string | null {
   return `${base} - score ${scoreLabel}`;
 }
 
+function normalizeScoreThreshold(mode: QuizValidationMode, threshold: number | null, questionCount: number) {
+  if (mode !== "score_threshold") {
+    return null;
+  }
+
+  if (threshold === null) {
+    return questionCount;
+  }
+
+  return Math.min(questionCount, Math.max(1, threshold));
+}
+
+function normalizeQuestionCount(rawValue: number): number {
+  return Math.min(MAX_QUESTION_COUNT, Math.max(MIN_QUESTION_COUNT, rawValue));
+}
+
 export function QuizPanel({
   quizSettings,
-  commitMessageDraft,
   session,
   isLoadingSession,
   isCreatingSession,
+  isSavingSettings,
   isSubmittingAnswers,
   isValidating,
   streamError,
@@ -84,66 +115,161 @@ export function QuizPanel({
   bypassAvailable,
   bypassArmed,
   onStartQuiz,
-  onRegenerateQuiz,
+  onClearQuiz,
   onSelectAnswer,
   onValidateQuiz,
   onBypassOnce,
-  onOpenSettings,
+  onUpdateQuizSettings,
 }: QuizPanelProps) {
-  const trimmedCommitMessage = commitMessageDraft.trim();
-  const hasCommitMessage = trimmedCommitMessage.length > 0;
-
   if (!session) {
+    const controlsDisabled = isCreatingSession || isLoadingSession || isSavingSettings;
+
     return (
       <div className="quiz-panel">
-        <div className="quiz-hero">
-          <div className="quiz-hero-copy">
-            <p className="hud-label">quiz preflight</p>
-            <p className="quiz-headline">Confirm understanding before you commit</p>
-            <p className="inline-note">
-              Generate questions from current diff context. Commit message is optional for quiz
-              generation.
-            </p>
+        <div className="quiz-prestart-layout">
+          <p className="quiz-page-title">Precommit Quiz</p>
+
+          <div className="quiz-inline-settings" role="form" aria-label="Quiz setup">
+            <div className="quiz-inline-setting">
+              <p className="hud-label">Scope</p>
+              <div className="settings-segment" role="radiogroup" aria-label="Quiz generation scope">
+                {SCOPE_OPTIONS.map((option) => {
+                  const selected = quizSettings.scope === option.value;
+
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      disabled={controlsDisabled}
+                      className={
+                        selected
+                          ? "settings-segment-button settings-segment-button-selected"
+                          : "settings-segment-button"
+                      }
+                      onClick={() => {
+                        onUpdateQuizSettings({
+                          ...quizSettings,
+                          scope: option.value,
+                        });
+                      }}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <label className="quiz-inline-setting" htmlFor="quiz-inline-question-count">
+              <span className="hud-label">Question count</span>
+              <input
+                id="quiz-inline-question-count"
+                className="settings-input settings-input-number"
+                type="number"
+                min={MIN_QUESTION_COUNT}
+                max={MAX_QUESTION_COUNT}
+                disabled={controlsDisabled}
+                value={quizSettings.questionCount}
+                onChange={(event) => {
+                  const parsed = Number(event.target.value);
+
+                  if (!Number.isInteger(parsed)) {
+                    return;
+                  }
+
+                  const questionCount = normalizeQuestionCount(parsed);
+
+                  onUpdateQuizSettings({
+                    ...quizSettings,
+                    questionCount,
+                    scoreThreshold: normalizeScoreThreshold(
+                      quizSettings.validationMode,
+                      quizSettings.scoreThreshold,
+                      questionCount,
+                    ),
+                  });
+                }}
+              />
+            </label>
+
+            <div className="quiz-inline-setting">
+              <p className="hud-label">Validation mode</p>
+              <div className="settings-segment" role="radiogroup" aria-label="Quiz validation mode">
+                {VALIDATION_OPTIONS.map((option) => {
+                  const selected = quizSettings.validationMode === option.value;
+
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      disabled={controlsDisabled}
+                      className={
+                        selected
+                          ? "settings-segment-button settings-segment-button-selected"
+                          : "settings-segment-button"
+                      }
+                      onClick={() => {
+                        onUpdateQuizSettings({
+                          ...quizSettings,
+                          validationMode: option.value,
+                          scoreThreshold: normalizeScoreThreshold(
+                            option.value,
+                            quizSettings.scoreThreshold,
+                            quizSettings.questionCount,
+                          ),
+                        });
+                      }}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {quizSettings.validationMode === "score_threshold" ? (
+              <label className="quiz-inline-setting" htmlFor="quiz-inline-threshold">
+                <span className="hud-label">Score threshold</span>
+                <input
+                  id="quiz-inline-threshold"
+                  className="settings-input settings-input-number"
+                  type="number"
+                  min={1}
+                  max={quizSettings.questionCount}
+                  disabled={controlsDisabled}
+                  value={quizSettings.scoreThreshold ?? quizSettings.questionCount}
+                  onChange={(event) => {
+                    const parsed = Number(event.target.value);
+
+                    if (!Number.isInteger(parsed)) {
+                      return;
+                    }
+
+                    const threshold = Math.min(quizSettings.questionCount, Math.max(1, parsed));
+
+                    onUpdateQuizSettings({
+                      ...quizSettings,
+                      scoreThreshold: threshold,
+                    });
+                  }}
+                />
+              </label>
+            ) : null}
           </div>
 
-          <div className="quiz-actions-row">
+          <div className="quiz-generate-dock">
             <button
-              className="hud-button"
+              className="hud-button quiz-generate-button"
               type="button"
-              disabled={isCreatingSession || isLoadingSession}
+              disabled={controlsDisabled}
               onClick={onStartQuiz}
             >
-              {isCreatingSession || isLoadingSession ? "generating..." : "generate tests"}
+              {isCreatingSession || isLoadingSession ? "generating..." : "generate quiz"}
             </button>
-            <button className="hud-button" type="button" onClick={onOpenSettings}>
-              quiz settings
-            </button>
-          </div>
-        </div>
-
-        <div className="quiz-preflight-grid" role="status" aria-label="Quiz preflight summary">
-          <div className="quiz-preflight-item">
-            <p className="hud-label">commit message</p>
-            {hasCommitMessage ? (
-              <p className="quiz-preflight-value">{trimmedCommitMessage}</p>
-            ) : (
-              <p className="inline-note">No draft message yet (optional for quiz start).</p>
-            )}
-          </div>
-
-          <div className="quiz-preflight-item">
-            <p className="hud-label">generation scope</p>
-            <p className="quiz-preflight-value">{toScopeSummary(quizSettings)}</p>
-          </div>
-
-          <div className="quiz-preflight-item">
-            <p className="hud-label">question count</p>
-            <p className="quiz-preflight-value">{quizSettings.questionCount}</p>
-          </div>
-
-          <div className="quiz-preflight-item">
-            <p className="hud-label">validation policy</p>
-            <p className="quiz-preflight-value">{toValidationPolicySummary(quizSettings)}</p>
           </div>
         </div>
 
@@ -162,7 +288,9 @@ export function QuizPanel({
           <div className="quiz-hero-copy">
             <p className="hud-label">quiz generation</p>
             <p className="quiz-headline">Building your readiness check</p>
-            <p className="inline-note">{isCreatingSession || isLoadingSession ? "Preparing quiz..." : progressLabel}</p>
+            <p className="inline-note">
+              {isCreatingSession || isLoadingSession ? "Preparing quiz..." : progressLabel}
+            </p>
           </div>
         </div>
         <div
@@ -190,8 +318,16 @@ export function QuizPanel({
         </div>
         <p className="error-note">{session.failure?.message ?? "Quiz generation failed."}</p>
         <div className="quiz-actions-row">
-          <button className="hud-button" type="button" onClick={onRegenerateQuiz}>
-            generate tests
+          <button
+            className="hud-button"
+            type="button"
+            disabled={isCreatingSession || isLoadingSession}
+            onClick={onStartQuiz}
+          >
+            {isCreatingSession || isLoadingSession ? "generating..." : "generate quiz"}
+          </button>
+          <button className="hud-button" type="button" onClick={onClearQuiz}>
+            clear quiz
           </button>
           {bypassAvailable ? (
             <button className="hud-button" type="button" onClick={onBypassOnce}>
@@ -307,8 +443,8 @@ export function QuizPanel({
         >
           {isValidating ? "validating..." : "validate quiz"}
         </button>
-        <button className="hud-button" type="button" onClick={onRegenerateQuiz}>
-          generate tests again
+        <button className="hud-button" type="button" onClick={onClearQuiz}>
+          clear quiz
         </button>
       </div>
 

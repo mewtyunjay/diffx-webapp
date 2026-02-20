@@ -19,6 +19,7 @@ type DiffPanelProps = {
   onPaneModeChange: (mode: DiffPaneMode) => void;
   viewMode: DiffViewMode;
   onViewModeChange: (mode: DiffViewMode) => void;
+  onOpenSettings: () => void;
   onPreviousFile: () => void;
   onNextFile: () => void;
   canGoPrevious: boolean;
@@ -41,6 +42,7 @@ export function DiffPanel({
   onPaneModeChange,
   viewMode,
   onViewModeChange,
+  onOpenSettings,
   onPreviousFile,
   onNextFile,
   canGoPrevious,
@@ -83,6 +85,7 @@ export function DiffPanel({
           onPaneModeChange={onPaneModeChange}
           viewMode={viewMode}
           onViewModeChange={onViewModeChange}
+          onOpenSettings={onOpenSettings}
         />
         <div className="diff-content">{quizPanel}</div>
       </section>
@@ -97,6 +100,7 @@ export function DiffPanel({
           onPaneModeChange={onPaneModeChange}
           viewMode={viewMode}
           onViewModeChange={onViewModeChange}
+          onOpenSettings={onOpenSettings}
         />
         <div className="diff-content">
           <p className="empty-state">Select a file in the sidebar to view its diff.</p>
@@ -158,6 +162,7 @@ export function DiffPanel({
         onPaneModeChange={onPaneModeChange}
         viewMode={viewMode}
         onViewModeChange={onViewModeChange}
+        onOpenSettings={onOpenSettings}
       />
 
       {diffFile ? (

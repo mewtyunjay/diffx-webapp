@@ -25,7 +25,7 @@ describe("provider-registry", () => {
 
   it("honors explicit provider overrides in tests", async () => {
     const override: QuizGeneratorProvider = {
-      id: "claude",
+      id: "codex",
       async checkAvailability() {
         return { available: true };
       },

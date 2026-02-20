@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { ApiRouteError } from "../../domain/api-route-error.js";
+import { logBackendEvent } from "../../logging/logger.js";
 
 export type GitExecResult = {
   stdout: string;
@@ -38,12 +39,71 @@ export class GitCommandError extends Error {
   }
 }
 
+type GitCommandSummary = {
+  subcommand: string;
+  flagCount: number;
+  positionalCount: number;
+  usesRepoOverride: boolean;
+};
+
+const FLAGS_WITH_VALUE = new Set(["-C", "-m", "--message", "--author", "--file"]);
+
+export function summarizeGitCommandArgs(args: string[]): GitCommandSummary {
+  const tokens: string[] = [];
+  let usesRepoOverride = false;
+
+  for (let index = 0; index < args.length; index += 1) {
+    const token = args[index];
+
+    if (!token) {
+      continue;
+    }
+
+    if (token === "-C") {
+      usesRepoOverride = true;
+      index += 1;
+      continue;
+    }
+
+    if (FLAGS_WITH_VALUE.has(token)) {
+      tokens.push(token);
+      index += 1;
+      continue;
+    }
+
+    tokens.push(token);
+  }
+
+  const subcommandIndex = tokens.findIndex((token) => !token.startsWith("-"));
+  const subcommand = subcommandIndex >= 0 ? tokens[subcommandIndex]! : "unknown";
+  const flagCount = tokens.filter((token) => token.startsWith("-")).length;
+  const positionalCount =
+    subcommandIndex >= 0
+      ? tokens.slice(subcommandIndex + 1).filter((token) => !token.startsWith("-")).length
+      : 0;
+
+  return {
+    subcommand,
+    flagCount,
+    positionalCount,
+    usesRepoOverride,
+  };
+}
+
 export async function execGit(
   args: string[],
   options: GitExecOptions = {},
 ): Promise<GitExecResult> {
   const allowExitCodes = options.allowExitCodes ?? [0];
   const cwd = options.cwd ?? process.cwd();
+  const command = summarizeGitCommandArgs(args);
+  const startedAt = process.hrtime.bigint();
+
+  logBackendEvent("git", "info", "git:spawn", {
+    command,
+    cwd,
+    allowExitCodes,
+  });
 
   return await new Promise((resolve, reject) => {
     const child = spawn("git", args, { cwd });
@@ -59,6 +119,15 @@ export async function execGit(
     });
 
     child.on("error", (error) => {
+      const durationMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
+
+      logBackendEvent("git", "error", "git:spawn-error", {
+        command,
+        cwd,
+        durationMs: Number(durationMs.toFixed(1)),
+        message: error instanceof Error ? error.message : String(error),
+      });
+
       reject(
         new GitCommandError(
           args,
@@ -76,6 +145,16 @@ export async function execGit(
       const stderrBuffer = Buffer.concat(stderrChunks);
       const stdout = stdoutBuffer.toString("utf8");
       const stderr = stderrBuffer.toString("utf8");
+      const durationMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
+
+      logBackendEvent("git", allowExitCodes.includes(exitCode) ? "info" : "warn", "git:exit", {
+        command,
+        cwd,
+        exitCode,
+        durationMs: Number(durationMs.toFixed(1)),
+        stdoutBytes: stdoutBuffer.length,
+        stderrBytes: stderrBuffer.length,
+      });
 
       if (!allowExitCodes.includes(exitCode)) {
         reject(new GitCommandError(args, cwd, exitCode, stdout, stderr));

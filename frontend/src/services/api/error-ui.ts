@@ -20,6 +20,8 @@ const COPY_BY_CODE: Record<ApiErrorCode, string> = {
   INVALID_SCOPE: "Invalid diff scope was requested.",
   INVALID_SIDE: "Invalid diff side was requested.",
   INVALID_PATH: "Invalid file path was requested.",
+  WORKSPACE_PICK_CANCELLED: "Folder selection was cancelled.",
+  WORKSPACE_PICK_UNSUPPORTED: "Native folder picker is unavailable on this platform. Enter a path manually.",
   INVALID_SETTINGS: "Settings payload is invalid.",
   INVALID_QUIZ_SESSION: "Quiz session request is invalid.",
   INVALID_QUIZ_ANSWER: "One or more quiz answers are invalid.",

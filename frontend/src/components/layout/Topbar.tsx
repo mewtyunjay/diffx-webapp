@@ -4,15 +4,24 @@ type TopbarProps = {
   repo: RepoSummary;
   onRefresh: () => void;
   onOpenSettings: () => void;
+  onPickWorkspace: () => void;
   quizGateEnabled: boolean;
 };
 
-export function Topbar({ repo, onRefresh, onOpenSettings, quizGateEnabled }: TopbarProps) {
+export function Topbar({
+  repo,
+  onRefresh,
+  onOpenSettings,
+  onPickWorkspace,
+  quizGateEnabled,
+}: TopbarProps) {
   return (
     <header className="topbar">
       <div className="topbar-left">
         <span className="wordmark">DIFFX</span>
-        <span className="repo-name">{repo.repoName}</span>
+        <button className="repo-name repo-name-button" type="button" onClick={onPickWorkspace}>
+          {repo.repoName}
+        </button>
       </div>
 
       <div className="topbar-center">

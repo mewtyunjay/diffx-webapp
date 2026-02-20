@@ -10,6 +10,7 @@ import type {
   ValidateQuizSessionRequest,
 } from "@diffx/contracts";
 import { ApiRouteError } from "../../domain/api-route-error.js";
+import { logBackendEvent } from "../../logging/logger.js";
 import { getSettings } from "../settings/settings.service.js";
 import {
   getQuizGeneratorProvider,
@@ -32,21 +33,12 @@ const MAX_SESSION_COUNT = 200;
 const sessions = new Map<string, QuizSession>();
 const events = new EventEmitter();
 
-function shouldLogQuizGeneration(): boolean {
-  return process.env.NODE_ENV !== "test" && process.env.VITEST !== "true";
-}
-
-function logQuizGeneration(message: string, details?: Record<string, unknown>) {
-  if (!shouldLogQuizGeneration()) {
-    return;
-  }
-
-  if (details) {
-    console.info(`[quiz] ${message}`, details);
-    return;
-  }
-
-  console.info(`[quiz] ${message}`);
+function logQuizGeneration(
+  message: string,
+  details?: Record<string, unknown>,
+  level: "debug" | "info" | "warn" | "error" = "info",
+) {
+  logBackendEvent("quiz", level, message, details);
 }
 
 function sessionEventKey(sessionId: string): string {
@@ -59,7 +51,6 @@ function cloneSession(session: QuizSession): QuizSession {
     status: session.status,
     sourceFingerprint: session.sourceFingerprint,
     commitMessageDraft: session.commitMessageDraft,
-    selectedPath: session.selectedPath,
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
     progress: {
@@ -280,7 +271,7 @@ async function runGeneration(
   const provider = await getQuizGeneratorProvider(input.providerPreference);
   const agentConfig = provider.getAgentConfig();
 
-  logQuizGeneration("generate tests requested", {
+  logQuizGeneration("generate quiz requested", {
     sessionId,
     provider: agentConfig.provider,
     model: agentConfig.model,
@@ -309,14 +300,18 @@ async function runGeneration(
       validation: null,
     }));
 
-    logQuizGeneration("generate tests skipped", {
-      sessionId,
-      provider: agentConfig.provider,
-      model: agentConfig.model,
-      reasoningEffort: agentConfig.reasoningEffort,
-      status: "failed",
-      reason: "no-files-in-scope",
-    });
+    logQuizGeneration(
+      "generate quiz skipped",
+      {
+        sessionId,
+        provider: agentConfig.provider,
+        model: agentConfig.model,
+        reasoningEffort: agentConfig.reasoningEffort,
+        status: "failed",
+        reason: "no-files-in-scope",
+      },
+      "warn",
+    );
 
     publishStatus(failedSession);
     publishError(failedSession);
@@ -342,7 +337,7 @@ async function runGeneration(
     const rawPayload = await withTimeout(provider.generateQuiz(input), timeoutMs);
     const payload = validateQuizPayload(rawPayload);
 
-    logQuizGeneration("generate tests completed", {
+    logQuizGeneration("generate quiz completed", {
       sessionId,
       provider: agentConfig.provider,
       model: agentConfig.model,
@@ -369,15 +364,19 @@ async function runGeneration(
     publishComplete(readySession);
   } catch (error) {
     const failure = mapGenerationError(error);
-    logQuizGeneration("generate tests failed", {
-      sessionId,
-      provider: agentConfig.provider,
-      model: agentConfig.model,
-      reasoningEffort: agentConfig.reasoningEffort,
-      status: "failed",
-      message: failure.message,
-      retryable: failure.retryable,
-    });
+    logQuizGeneration(
+      "generate quiz failed",
+      {
+        sessionId,
+        provider: agentConfig.provider,
+        model: agentConfig.model,
+        reasoningEffort: agentConfig.reasoningEffort,
+        status: "failed",
+        message: failure.message,
+        retryable: failure.retryable,
+      },
+      "warn",
+    );
 
     const failedSession = touchSession(sessionId, (current) => ({
       ...current,
@@ -453,9 +452,8 @@ export async function createQuizSession(input: CreateQuizSessionRequest): Promis
   pruneSessions();
 
   const commitMessage = sanitizeCommitMessage(input.commitMessage);
-  const selectedPath = typeof input.selectedPath === "string" ? input.selectedPath : null;
   const settings = getSettings();
-  const promptContext = await buildQuizPromptContext(settings.quiz, selectedPath);
+  const promptContext = await buildQuizPromptContext(settings.quiz);
   const createdAt = new Date().toISOString();
 
   const session: QuizSession = {
@@ -463,7 +461,6 @@ export async function createQuizSession(input: CreateQuizSessionRequest): Promis
     status: "queued",
     sourceFingerprint: promptContext.sourceFingerprint,
     commitMessageDraft: commitMessage,
-    selectedPath,
     createdAt,
     updatedAt: createdAt,
     progress: {
@@ -479,6 +476,16 @@ export async function createQuizSession(input: CreateQuizSessionRequest): Promis
 
   sessions.set(session.id, session);
   publishStatus(session);
+
+  logQuizGeneration("session created", {
+    sessionId: session.id,
+    sourceFingerprint: session.sourceFingerprint,
+    questionCount: settings.quiz.questionCount,
+    scope: settings.quiz.scope,
+    providerPreference: settings.quiz.providerPreference,
+    hasCommitMessage: commitMessage.length > 0,
+    focusFiles: promptContext.focusFiles.length,
+  });
 
   void runGeneration(session.id, {
     questionCount: settings.quiz.questionCount,
@@ -565,6 +572,13 @@ export function submitQuizAnswers(
 
   publishStatus(next);
 
+  logQuizGeneration("answers updated", {
+    sessionId,
+    status: next.status,
+    answeredCount: Object.keys(next.answers).length,
+    totalQuestions: next.quiz?.questions.length ?? 0,
+  });
+
   return cloneSession(next);
 }
 
@@ -611,6 +625,17 @@ export async function validateQuizSession(
     request.sourceFingerprint !== session.sourceFingerprint ||
     currentSourceFingerprint !== session.sourceFingerprint
   ) {
+    logQuizGeneration(
+      "validation blocked by source fingerprint mismatch",
+      {
+        sessionId,
+        requestedFingerprint: request.sourceFingerprint,
+        sessionFingerprint: session.sourceFingerprint,
+        currentFingerprint: currentSourceFingerprint,
+      },
+      "warn",
+    );
+
     throw new ApiRouteError(
       409,
       "QUIZ_REPO_STATE_CHANGED",
@@ -642,6 +667,17 @@ export async function validateQuizSession(
   if (result.passed) {
     publishComplete(next);
   }
+
+  logQuizGeneration("validation evaluated", {
+    sessionId,
+    passed: result.passed,
+    mode: result.mode,
+    answeredCount: result.answeredCount,
+    correctCount: result.correctCount,
+    totalQuestions: result.totalQuestions,
+    score: result.score,
+    scoreThreshold: result.scoreThreshold,
+  });
 
   return cloneSession(next);
 }

@@ -13,6 +13,7 @@ import {
   subscribeToQuizSession,
   validateQuizSession,
 } from "../services/quiz/quiz-session.service.js";
+import { logBackendEvent } from "../logging/logger.js";
 import { getQuizProviderStatuses } from "../services/quiz/provider-registry.js";
 import { sendRouteError } from "./http.js";
 
@@ -21,6 +22,10 @@ const router = Router();
 router.get("/quiz/providers", async (_req, res) => {
   try {
     const providers = await getQuizProviderStatuses();
+    logBackendEvent("provider", "info", "provider:status-requested", {
+      total: providers.length,
+      available: providers.filter((provider) => provider.available).length,
+    });
     const payload: GetQuizProvidersResponse = { providers };
     res.json(payload);
   } catch (error) {
@@ -61,43 +66,114 @@ router.get("/quiz/sessions/:id", (req, res) => {
 router.get("/quiz/sessions/:id/stream", (req, res) => {
   let unsubscribe: (() => void) | null = null;
   let keepAliveTimer: ReturnType<typeof setInterval> | null = null;
+  const sessionId = req.params.id ?? "";
+
+  const cleanupStream = () => {
+    if (keepAliveTimer) {
+      clearInterval(keepAliveTimer);
+      keepAliveTimer = null;
+    }
+
+    unsubscribe?.();
+    unsubscribe = null;
+  };
+
+  const closeStreamWithError = (message: string, retryable = true) => {
+    cleanupStream();
+
+    if (res.writableEnded) {
+      return;
+    }
+
+    try {
+      const session = getQuizSession(sessionId);
+      writeSseEvent(
+        res,
+        { type: "session_error" },
+        {
+          type: "session_error",
+          session,
+          retryable,
+          message,
+        },
+      );
+      writeSseEvent(
+        res,
+        { type: "session_complete" },
+        {
+          type: "session_complete",
+          session,
+        },
+      );
+    } catch {
+      // If the session no longer exists, end stream silently.
+    }
+
+    res.end();
+  };
+
+  let initialEvents: ReturnType<typeof getQuizSessionInitialEvents>;
 
   try {
-    const sessionId = req.params.id ?? "";
+    initialEvents = getQuizSessionInitialEvents(sessionId);
+  } catch (error) {
+    sendRouteError(res, error);
+    return;
+  }
 
+  try {
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache, no-transform");
     res.setHeader("Connection", "keep-alive");
     res.flushHeaders?.();
 
-    const initialEvents = getQuizSessionInitialEvents(sessionId);
+    logBackendEvent("quiz", "info", "sse:connected", {
+      sessionId,
+      initialEvents: initialEvents.length,
+    });
+
     for (const event of initialEvents) {
+      logBackendEvent("quiz", "debug", "sse:emit", {
+        sessionId,
+        eventType: event.type,
+        source: "initial",
+      });
       writeSseEvent(res, event, event);
     }
 
     unsubscribe = subscribeToQuizSession(sessionId, (event) => {
-      writeSseEvent(res, event, event);
+      logBackendEvent("quiz", "debug", "sse:emit", {
+        sessionId,
+        eventType: event.type,
+        source: "live",
+      });
+
+      try {
+        writeSseEvent(res, event, event);
+      } catch {
+        closeStreamWithError("Quiz progress stream failed.");
+      }
     });
 
     keepAliveTimer = setInterval(() => {
-      res.write(":keepalive\n\n");
+      try {
+        res.write(":keepalive\n\n");
+      } catch {
+        closeStreamWithError("Quiz progress stream failed.");
+      }
     }, 15000);
 
     req.on("close", () => {
-      if (keepAliveTimer) {
-        clearInterval(keepAliveTimer);
-      }
-
-      unsubscribe?.();
-      res.end();
+      cleanupStream();
+      logBackendEvent("quiz", "info", "sse:disconnected", {
+        sessionId,
+      });
     });
   } catch (error) {
-    if (keepAliveTimer) {
-      clearInterval(keepAliveTimer);
-    }
-
-    unsubscribe?.();
-    sendRouteError(res, error);
+    const message = error instanceof Error && error.message.length > 0
+      ? error.message
+      : "Quiz progress stream failed.";
+    closeStreamWithError(message);
   }
 });
 

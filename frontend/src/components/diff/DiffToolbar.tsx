@@ -5,6 +5,7 @@ type DiffToolbarProps = {
   onPaneModeChange: (mode: DiffPaneMode) => void;
   viewMode: DiffViewMode;
   onViewModeChange: (mode: DiffViewMode) => void;
+  onOpenSettings: () => void;
 };
 
 export function DiffToolbar({
@@ -12,6 +13,7 @@ export function DiffToolbar({
   onPaneModeChange,
   viewMode,
   onViewModeChange,
+  onOpenSettings,
 }: DiffToolbarProps) {
   return (
     <div className="diff-toolbar">
@@ -51,7 +53,13 @@ export function DiffToolbar({
             unified
           </button>
         </div>
-      ) : null}
+      ) : (
+        <div className="diff-toolbar-group diff-mode-switch">
+          <button className="hud-button" type="button" onClick={onOpenSettings}>
+            settings
+          </button>
+        </div>
+      )}
     </div>
   );
 }

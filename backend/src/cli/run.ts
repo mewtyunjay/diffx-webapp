@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import express from "express";
 import { createApp } from "../app.js";
+import { initializeWorkspaceRoot } from "../services/workspace.service.js";
 import { DiffxCliArgsError, parseDiffxCliArgs } from "./args.js";
 import { openBrowser } from "./open-browser.js";
 
@@ -63,7 +64,7 @@ export async function runDiffxCli(argv: string[]): Promise<void> {
     await assertDirectoryExists(repoRoot, "Repository path");
     await assertFrontendBuildReady(frontendDistDir, indexHtmlPath);
 
-    process.env.DIFFX_REPO_ROOT = repoRoot;
+    await initializeWorkspaceRoot(repoRoot);
 
     const app = createApp();
 

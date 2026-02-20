@@ -47,6 +47,25 @@
   text-overflow: ellipsis;
 }
 
+.repo-name-button {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  max-width: 100%;
+}
+
+.repo-name-button:hover {
+  text-decoration: underline;
+}
+
+.repo-name-button:focus-visible {
+  outline: 1px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
 .chip {
   border: 0.5px solid var(--color-border);
   color: var(--color-text-dim);
@@ -716,6 +735,52 @@
   padding: 0.2rem;
 }
 
+.quiz-prestart-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-height: 100%;
+}
+
+.quiz-page-title {
+  margin: 0;
+  color: var(--color-text-bright);
+  font-size: var(--font-size-display);
+  letter-spacing: 0.04em;
+}
+
+.quiz-inline-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  max-width: 30rem;
+}
+
+.quiz-inline-setting {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.quiz-inline-setting .settings-segment {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.quiz-inline-setting .settings-input {
+  width: min(12rem, 100%);
+}
+
+.quiz-generate-dock {
+  margin-top: auto;
+  display: flex;
+  justify-content: center;
+  padding: 1.6rem 0 10vh;
+}
+
+.quiz-generate-button {
+  min-width: 15rem;
+}
+
 .quiz-hero {
   border: 0.5px solid var(--color-line);
   background:
@@ -1161,6 +1226,42 @@
   color: var(--color-text);
 }
 
+.workspace-picker-card {
+  display: grid;
+  gap: 1.1rem;
+}
+
+.workspace-picker-section {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.workspace-path {
+  display: block;
+  border: 0.5px solid var(--color-border);
+  background: rgba(10, 12, 14, 0.72);
+  color: var(--color-text-bright);
+  padding: 0.7rem 0.8rem;
+  font-family: inherit;
+  font-size: var(--font-size-control);
+  overflow-wrap: anywhere;
+}
+
+.workspace-path-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.7rem;
+  align-items: center;
+}
+
+.workspace-path-input {
+  width: 100%;
+}
+
+.workspace-picker-error {
+  margin-top: 0.2rem;
+}
+
 @media (max-width: 1024px) {
   .workspace {
     grid-template-columns: minmax(0, 1fr) 24rem;
@@ -1210,5 +1311,17 @@
 
   .settings-segment {
     grid-template-columns: 1fr;
+  }
+
+  .workspace-path-row {
+    grid-template-columns: 1fr;
+  }
+
+  .quiz-inline-setting .settings-segment {
+    grid-template-columns: 1fr;
+  }
+
+  .quiz-generate-dock {
+    padding-bottom: 5vh;
   }
 }

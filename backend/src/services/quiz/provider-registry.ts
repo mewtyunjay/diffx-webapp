@@ -1,8 +1,7 @@
 import { ApiRouteError } from "../../domain/api-route-error.js";
 import type { QuizProviderId, QuizProviderPreference, QuizProviderStatus } from "@diffx/contracts";
-import { createClaudeQuizProvider } from "./providers/claude.provider.js";
+import { logBackendEvent } from "../../logging/logger.js";
 import { createCodexQuizProvider } from "./providers/codex.provider.js";
-import { createOpencodeQuizProvider } from "./providers/opencode.provider.js";
 import {
   getQuizProviderConfig,
   type QuizGenerationInput,
@@ -26,7 +25,7 @@ type QuizGeneratorProvider = {
   generateQuiz: (input: QuizGenerationInput) => Promise<unknown>;
 };
 
-const AUTO_PROVIDER_ORDER: QuizProviderId[] = ["codex", "claude", "opencode"];
+const PROVIDER_ORDER: QuizProviderId[] = ["codex"];
 
 let providerCache = new Map<QuizProviderId, QuizGeneratorProvider>();
 let providerOverrideForTests: QuizGeneratorProvider | null = null;
@@ -102,28 +101,19 @@ function getProvider(providerId: QuizProviderId): QuizGeneratorProvider {
     return cached;
   }
 
-  const created =
-    providerId === "codex"
-      ? createCodexQuizProvider()
-      : providerId === "claude"
-        ? createClaudeQuizProvider()
-        : createOpencodeQuizProvider();
+  const created = createCodexQuizProvider();
 
   providerCache.set(providerId, created);
   return created;
 }
 
 function resolveCandidateOrder(preference: QuizProviderPreference): QuizProviderId[] {
-  if (preference === "auto") {
-    return [...AUTO_PROVIDER_ORDER];
-  }
-
-  const remaining = AUTO_PROVIDER_ORDER.filter((provider) => provider !== preference);
+  const remaining = PROVIDER_ORDER.filter((provider) => provider !== preference);
   return [preference, ...remaining];
 }
 
 function toNoProviderError(reasonsByProvider: Map<QuizProviderId, string>): ApiRouteError {
-  const reasonLines = AUTO_PROVIDER_ORDER.map((providerId) => {
+  const reasonLines = PROVIDER_ORDER.map((providerId) => {
     const reason = reasonsByProvider.get(providerId) ?? "unavailable";
     return `${providerId}: ${reason}`;
   }).join("; ");
@@ -131,7 +121,7 @@ function toNoProviderError(reasonsByProvider: Map<QuizProviderId, string>): ApiR
   return new ApiRouteError(
     502,
     "QUIZ_GENERATION_FAILED",
-    `No quiz provider is available. Authenticate one provider: \`codex login\`, \`claude auth login\`, or \`opencode auth login\`. (${reasonLines})`,
+    `Codex is unavailable. Authenticate with \`codex login\` and retry quiz generation. (${reasonLines})`,
   );
 }
 
@@ -152,10 +142,14 @@ export async function getQuizGeneratorProvider(
   preferenceOverride?: QuizProviderPreference,
 ): Promise<QuizGeneratorProvider> {
   if (providerOverrideForTests) {
+    logBackendEvent("provider", "debug", "provider:using-test-override", {
+      providerId: providerOverrideForTests.id,
+    });
     return providerOverrideForTests;
   }
 
   if (isTestRuntime()) {
+    logBackendEvent("provider", "debug", "provider:using-deterministic-test-runtime", {});
     return createDeterministicTestProvider();
   }
 
@@ -164,27 +158,53 @@ export async function getQuizGeneratorProvider(
   const candidateOrder = resolveCandidateOrder(effectivePreference);
   const reasonsByProvider = new Map<QuizProviderId, string>();
 
+  logBackendEvent("provider", "info", "provider:resolve-start", {
+    preference: effectivePreference,
+    candidates: candidateOrder,
+  });
+
   for (const providerId of candidateOrder) {
     const provider = getProvider(providerId);
     const availability = await provider.checkAvailability();
 
+    logBackendEvent("provider", availability.available ? "info" : "warn", "provider:availability", {
+      providerId,
+      available: availability.available,
+      reason: availability.reason ?? null,
+    });
+
     if (availability.available) {
+      logBackendEvent("provider", "info", "provider:selected", {
+        providerId,
+        preference: effectivePreference,
+      });
       return provider;
     }
 
     reasonsByProvider.set(providerId, availability.reason ?? "unavailable");
 
-    if (effectivePreference !== "auto" && providerId === effectivePreference) {
+    if (providerId === effectivePreference) {
+      logBackendEvent("provider", "warn", "provider:preferred-unavailable", {
+        providerId,
+        reason: availability.reason ?? null,
+      });
       throw toPreferredProviderError(providerId, availability);
     }
   }
+
+  logBackendEvent("provider", "error", "provider:none-available", {
+    reasons: Object.fromEntries(reasonsByProvider),
+  });
 
   throw toNoProviderError(reasonsByProvider);
 }
 
 export async function getQuizProviderStatuses(): Promise<QuizProviderStatus[]> {
   if (providerOverrideForTests) {
-    return AUTO_PROVIDER_ORDER.map((providerId) => ({
+    logBackendEvent("provider", "debug", "provider:status-test-override", {
+      providerId: providerOverrideForTests.id,
+    });
+    return PROVIDER_ORDER.map((providerId) => ({
       id: providerId,
       available: providerId === providerOverrideForTests!.id,
       reason:
@@ -196,7 +216,8 @@ export async function getQuizProviderStatuses(): Promise<QuizProviderStatus[]> {
   }
 
   if (isTestRuntime()) {
-    return AUTO_PROVIDER_ORDER.map((providerId) => ({
+    logBackendEvent("provider", "debug", "provider:status-test-runtime", {});
+    return PROVIDER_ORDER.map((providerId) => ({
       id: providerId,
       available: providerId === "codex",
       reason: providerId === "codex" ? null : "Provider checks are disabled in test runtime.",
@@ -204,8 +225,16 @@ export async function getQuizProviderStatuses(): Promise<QuizProviderStatus[]> {
     }));
   }
 
-  const providers = AUTO_PROVIDER_ORDER.map((providerId) => getProvider(providerId));
+  const providers = PROVIDER_ORDER.map((providerId) => getProvider(providerId));
   const availability = await Promise.all(providers.map(async (provider) => await provider.checkAvailability()));
+
+  logBackendEvent("provider", "info", "provider:status-snapshot", {
+    providers: providers.map((provider, index) => ({
+      id: provider.id,
+      available: availability[index]?.available ?? false,
+      reason: availability[index]?.reason ?? null,
+    })),
+  });
 
   return providers.map((provider, index) => ({
     id: provider.id,

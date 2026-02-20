@@ -8,8 +8,8 @@ import type {
 } from "@diffx/contracts";
 
 const SCOPE_OPTIONS: Array<{ value: QuizGenerationScope; label: string }> = [
-  { value: "staged", label: "staged changes" },
   { value: "all_changes", label: "all changes" },
+  { value: "staged", label: "staged changes" },
 ];
 
 const VALIDATION_OPTIONS: Array<{ value: QuizValidationMode; label: string }> = [
@@ -19,10 +19,7 @@ const VALIDATION_OPTIONS: Array<{ value: QuizValidationMode; label: string }> = 
 ];
 
 const PROVIDER_OPTIONS: Array<{ value: QuizProviderPreference; label: string }> = [
-  { value: "auto", label: "auto" },
   { value: "codex", label: "codex" },
-  { value: "claude", label: "claude" },
-  { value: "opencode", label: "opencode" },
 ];
 
 type SettingsModalProps = {

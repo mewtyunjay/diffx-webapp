@@ -1,11 +1,11 @@
-import type { DiffDetailQuery, DiffDetailResponse, DiffQuery, DiffSummaryResponse } from "@diffx/contracts";
+import type { DiffDetailQuery, DiffDetailResponse } from "@diffx/contracts";
 import { fetchJson } from "./client";
 
 type RequestOptions = {
   signal?: AbortSignal;
 };
 
-function toDiffQueryString(query: DiffQuery): string {
+function toDiffQueryString(query: DiffDetailQuery): string {
   const params = new URLSearchParams();
   params.set("path", query.path);
   params.set("scope", query.scope);
@@ -15,14 +15,6 @@ function toDiffQueryString(query: DiffQuery): string {
   }
 
   return params.toString();
-}
-
-export async function getDiffSummary(
-  query: DiffQuery,
-  options?: RequestOptions,
-): Promise<DiffSummaryResponse> {
-  const qs = toDiffQueryString(query);
-  return await fetchJson<DiffSummaryResponse>(`/api/diff?${qs}`, { signal: options?.signal });
 }
 
 export async function getDiffDetail(

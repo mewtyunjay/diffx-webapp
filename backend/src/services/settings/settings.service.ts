@@ -8,10 +8,10 @@ const DEFAULT_SETTINGS: AppSettings = {
   quiz: {
     gateEnabled: false,
     questionCount: 4,
-    scope: "staged",
+    scope: "all_changes",
     validationMode: "answer_all",
     scoreThreshold: null,
-    providerPreference: "auto",
+    providerPreference: "codex",
   },
 };
 
@@ -35,7 +35,7 @@ function isValidationMode(value: unknown): value is QuizValidationMode {
 }
 
 function isProviderPreference(value: unknown): value is QuizProviderPreference {
-  return value === "auto" || value === "codex" || value === "claude" || value === "opencode";
+  return value === "codex";
 }
 
 function toInvalidSettingsError(message: string): ApiRouteError {
@@ -112,9 +112,7 @@ function validateAndNormalizeSettings(next: AppSettings): AppSettings {
   }
 
   if (!isProviderPreference(quiz.providerPreference)) {
-    throw toInvalidSettingsError(
-      "`quiz.providerPreference` must be 'auto', 'codex', 'claude', or 'opencode'.",
-    );
+    throw toInvalidSettingsError("`quiz.providerPreference` must be 'codex'.");
   }
 
   const normalizedThreshold = normalizeThreshold(
@@ -127,12 +125,12 @@ function validateAndNormalizeSettings(next: AppSettings): AppSettings {
     quiz: {
       gateEnabled: quiz.gateEnabled,
       questionCount: quiz.questionCount,
-        scope: quiz.scope,
-        validationMode: quiz.validationMode,
-        scoreThreshold: normalizedThreshold,
-        providerPreference: quiz.providerPreference,
-      },
-    };
+      scope: quiz.scope,
+      validationMode: quiz.validationMode,
+      scoreThreshold: normalizedThreshold,
+      providerPreference: quiz.providerPreference,
+    },
+  };
 }
 
 export function getSettings(): AppSettings {

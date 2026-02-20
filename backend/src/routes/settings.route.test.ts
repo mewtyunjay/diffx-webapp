@@ -18,10 +18,10 @@ describe("/api/settings", () => {
       quiz: {
         gateEnabled: false,
         questionCount: 4,
-        scope: "staged",
+        scope: "all_changes",
         validationMode: "answer_all",
         scoreThreshold: null,
-        providerPreference: "auto",
+        providerPreference: "codex",
       },
     });
   });
@@ -36,7 +36,7 @@ describe("/api/settings", () => {
         scope: "staged",
         validationMode: "answer_all",
         scoreThreshold: 2,
-        providerPreference: "auto",
+        providerPreference: "codex",
       },
     });
 
@@ -56,7 +56,7 @@ describe("/api/settings", () => {
         scope: "all_changes",
         validationMode: "score_threshold",
         scoreThreshold: 3,
-        providerPreference: "claude",
+        providerPreference: "codex",
       },
     });
 
@@ -72,7 +72,7 @@ describe("/api/settings", () => {
         scope: "all_changes",
         validationMode: "score_threshold",
         scoreThreshold: 3,
-        providerPreference: "claude",
+        providerPreference: "codex",
       },
     });
   });

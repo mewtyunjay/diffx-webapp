@@ -13,7 +13,7 @@ import {
   unstageManyFiles,
 } from "./services/api/actions";
 import { ApiRequestError } from "./services/api/client";
-import { getDiffDetail, getDiffSummary } from "./services/api/diff";
+import { getDiffDetail } from "./services/api/diff";
 import { getChangedFiles } from "./services/api/files";
 import { getHealth } from "./services/api/health";
 import {
@@ -26,6 +26,7 @@ import {
 } from "./services/api/quiz";
 import { getRepoSummary } from "./services/api/repo";
 import { getSettings, putSettings } from "./services/api/settings";
+import { getWorkspace, pickWorkspace, setWorkspace } from "./services/api/workspace";
 
 vi.mock("./services/api/repo", () => ({
   getRepoSummary: vi.fn(),
@@ -36,7 +37,6 @@ vi.mock("./services/api/files", () => ({
 }));
 
 vi.mock("./services/api/diff", () => ({
-  getDiffSummary: vi.fn(),
   getDiffDetail: vi.fn(),
 }));
 
@@ -67,6 +67,12 @@ vi.mock("./services/api/actions", () => ({
   pushChanges: vi.fn(),
 }));
 
+vi.mock("./services/api/workspace", () => ({
+  getWorkspace: vi.fn(),
+  setWorkspace: vi.fn(),
+  pickWorkspace: vi.fn(),
+}));
+
 function createDeferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
   let reject!: (reason?: unknown) => void;
@@ -82,7 +88,6 @@ function createDeferred<T>() {
 describe("App", () => {
   const getRepoSummaryMock = vi.mocked(getRepoSummary);
   const getChangedFilesMock = vi.mocked(getChangedFiles);
-  const getDiffSummaryMock = vi.mocked(getDiffSummary);
   const getDiffDetailMock = vi.mocked(getDiffDetail);
   const getHealthMock = vi.mocked(getHealth);
   const getSettingsMock = vi.mocked(getSettings);
@@ -99,6 +104,9 @@ describe("App", () => {
   const unstageManyFilesMock = vi.mocked(unstageManyFiles);
   const commitChangesMock = vi.mocked(commitChanges);
   const pushChangesMock = vi.mocked(pushChanges);
+  const getWorkspaceMock = vi.mocked(getWorkspace);
+  const setWorkspaceMock = vi.mocked(setWorkspace);
+  const pickWorkspaceMock = vi.mocked(pickWorkspace);
 
   function buildGitRepoSummary(overrides: Partial<Awaited<ReturnType<typeof getRepoSummary>>> = {}) {
     return {
@@ -130,11 +138,17 @@ describe("App", () => {
       quiz: {
         gateEnabled: false,
         questionCount: 4,
-        scope: "staged" as const,
+        scope: "all_changes" as const,
         validationMode: "answer_all" as const,
         scoreThreshold: null,
-        providerPreference: "auto" as const,
+        providerPreference: "codex" as const,
       },
+    };
+  }
+
+  function buildWorkspaceState() {
+    return {
+      repoRoot: "/Users/mrityunjay/dev/projects/diffx-webapp",
     };
   }
 
@@ -143,7 +157,6 @@ describe("App", () => {
       id: "quiz-session-1",
       sourceFingerprint: "source-fingerprint",
       commitMessageDraft: "ship files dock",
-      selectedPath: "frontend/src/App.tsx",
       createdAt: "2026-02-17T00:00:00.000Z",
       updatedAt: "2026-02-17T00:00:00.000Z",
       progress: {
@@ -240,14 +253,15 @@ describe("App", () => {
     getQuizProvidersMock.mockResolvedValue({
       providers: [
         { id: "codex", available: true, reason: null, model: "gpt-5.3-codex-spark" },
-        { id: "claude", available: false, reason: "unavailable", model: "claude-sonnet-4-5" },
-        { id: "opencode", available: false, reason: "unavailable", model: "configured-default" },
       ],
     });
     getQuizSessionMock.mockReset();
     openQuizSessionStreamMock.mockReturnValue(() => undefined);
     submitQuizAnswersMock.mockReset();
     validateQuizSessionMock.mockReset();
+    getWorkspaceMock.mockResolvedValue(buildWorkspaceState());
+    setWorkspaceMock.mockResolvedValue(buildWorkspaceState());
+    pickWorkspaceMock.mockResolvedValue(buildWorkspaceState());
 
     getDiffDetailMock.mockResolvedValue({
       mode: "git",
@@ -316,12 +330,20 @@ describe("App", () => {
     );
   }
 
-  it("renders non-git gate when repository mode is non-git", async () => {
+  it("renders non-git gate and opens native picker from folder name", async () => {
     getRepoSummaryMock.mockResolvedValue(buildNonGitRepoSummary());
+    getChangedFilesMock.mockResolvedValue([]);
+    getHealthMock.mockResolvedValue({ ok: true });
+    pickWorkspaceMock.mockResolvedValueOnce({ repoRoot: "/tmp/selected-repo" });
 
     renderWithQueryClient();
 
     expect(await screen.findByText("Not a Git repository")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "scratch-folder" }));
+
+    await waitFor(() => {
+      expect(pickWorkspaceMock).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("retries repository bootstrap on retryable failures", async () => {
@@ -355,33 +377,6 @@ describe("App", () => {
     getChangedFilesMock.mockResolvedValue([
       { path: "backend/src/app.ts", status: "unstaged", contentHash: "hash-app" },
     ]);
-
-    getDiffSummaryMock.mockResolvedValue({
-      mode: "git",
-      file: {
-        path: "backend/src/app.ts",
-        oldPath: "backend/src/app.ts",
-        newPath: "backend/src/app.ts",
-        languageHint: "ts",
-        isBinary: false,
-        tooLarge: false,
-        patch: [
-          "diff --git a/backend/src/app.ts b/backend/src/app.ts",
-          "index 1111111..2222222 100644",
-          "--- a/backend/src/app.ts",
-          "+++ b/backend/src/app.ts",
-          "@@ -1 +1 @@",
-          "-const app = oldValue",
-          "+const app = newValue",
-          "",
-        ].join("\n"),
-        stats: {
-          additions: 1,
-          deletions: 1,
-          hunks: 1,
-        },
-      },
-    });
 
     getHealthMock.mockResolvedValue({ ok: true });
 
@@ -505,33 +500,6 @@ describe("App", () => {
       .mockImplementationOnce(async () => await deferredFilesAfterRefresh.promise)
       .mockResolvedValue([{ path: "backend/src/app.ts", status: "staged", contentHash: "hash-app" }]);
 
-    getDiffSummaryMock.mockResolvedValue({
-      mode: "git",
-      file: {
-        path: "backend/src/app.ts",
-        oldPath: "backend/src/app.ts",
-        newPath: "backend/src/app.ts",
-        languageHint: "ts",
-        isBinary: false,
-        tooLarge: false,
-        patch: [
-          "diff --git a/backend/src/app.ts b/backend/src/app.ts",
-          "index 1111111..2222222 100644",
-          "--- a/backend/src/app.ts",
-          "+++ b/backend/src/app.ts",
-          "@@ -1 +1 @@",
-          "-const app = oldValue",
-          "+const app = newValue",
-          "",
-        ].join("\n"),
-        stats: {
-          additions: 1,
-          deletions: 1,
-          hunks: 1,
-        },
-      },
-    });
-
     getHealthMock.mockResolvedValue({ ok: true });
 
     const deferred = createDeferred<ActionResponse>();
@@ -633,24 +601,6 @@ describe("App", () => {
       { path: "backend/src/server.ts", status: "unstaged", contentHash: "hash-server" },
     ]);
 
-    getDiffSummaryMock.mockResolvedValue({
-      mode: "git",
-      file: {
-        path: "backend/src/app.ts",
-        oldPath: "backend/src/app.ts",
-        newPath: "backend/src/app.ts",
-        languageHint: "ts",
-        isBinary: false,
-        tooLarge: false,
-        patch: null,
-        stats: {
-          additions: 0,
-          deletions: 0,
-          hunks: 0,
-        },
-      },
-    });
-
     getHealthMock.mockResolvedValue({ ok: true });
 
     renderWithQueryClient();
@@ -708,20 +658,6 @@ describe("App", () => {
       { path: "frontend/src/App.tsx", status: "staged", contentHash: "hash-frontend-app" },
     ]);
 
-    getDiffSummaryMock.mockResolvedValue({
-      mode: "git",
-      file: {
-        path: "frontend/src/App.tsx",
-        oldPath: "frontend/src/App.tsx",
-        newPath: "frontend/src/App.tsx",
-        languageHint: "tsx",
-        isBinary: false,
-        tooLarge: false,
-        patch: "",
-        stats: { additions: 0, deletions: 0, hunks: 0 },
-      },
-    });
-
     getDiffDetailMock.mockResolvedValue({
       mode: "git",
       file: {
@@ -768,20 +704,6 @@ describe("App", () => {
     getChangedFilesMock.mockResolvedValue([
       { path: "frontend/src/App.tsx", status: "staged", contentHash: "hash-frontend-app" },
     ]);
-
-    getDiffSummaryMock.mockResolvedValue({
-      mode: "git",
-      file: {
-        path: "frontend/src/App.tsx",
-        oldPath: "frontend/src/App.tsx",
-        newPath: "frontend/src/App.tsx",
-        languageHint: "tsx",
-        isBinary: false,
-        tooLarge: false,
-        patch: "",
-        stats: { additions: 0, deletions: 0, hunks: 0 },
-      },
-    });
 
     getDiffDetailMock.mockResolvedValue({
       mode: "git",
@@ -841,7 +763,7 @@ describe("App", () => {
         scope: "staged",
         validationMode: "answer_all",
         scoreThreshold: null,
-        providerPreference: "auto",
+        providerPreference: "codex",
       },
     });
 
@@ -859,12 +781,11 @@ describe("App", () => {
 
     expect(createQuizSessionMock).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole("button", { name: "generate tests" }));
+    fireEvent.click(screen.getByRole("button", { name: "generate quiz" }));
 
     await waitFor(() => {
       expect(createQuizSessionMock).toHaveBeenCalledWith({
         commitMessage: "",
-        selectedPath: "frontend/src/App.tsx",
       });
     });
 
@@ -880,7 +801,7 @@ describe("App", () => {
         scope: "staged",
         validationMode: "answer_all",
         scoreThreshold: null,
-        providerPreference: "auto",
+        providerPreference: "codex",
       },
     });
 
@@ -919,12 +840,11 @@ describe("App", () => {
 
     expect(createQuizSessionMock).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole("button", { name: "generate tests" }));
+    fireEvent.click(screen.getByRole("button", { name: "generate quiz" }));
 
     await waitFor(() => {
       expect(createQuizSessionMock).toHaveBeenCalledWith({
         commitMessage: "ship files dock",
-        selectedPath: "frontend/src/App.tsx",
       });
     });
 

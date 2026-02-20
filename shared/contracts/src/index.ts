@@ -13,6 +13,14 @@ export type RepoSummary = {
   remoteHash: string;
 };
 
+export type WorkspaceState = {
+  repoRoot: string;
+};
+
+export type GetWorkspaceResponse = WorkspaceState;
+export type SetWorkspaceRequest = WorkspaceState;
+export type SetWorkspaceResponse = WorkspaceState;
+
 export type ChangedFileStatus = "staged" | "unstaged" | "untracked";
 
 export type ChangedFileStats = {
@@ -70,12 +78,6 @@ export type DiffSummaryResponse = {
   file: FileDiff | null;
 };
 
-export type FileContentsQuery = {
-  path: string;
-  scope: DiffScope;
-  side: DiffSide;
-};
-
 export type FileContents = {
   name: string;
   contents: string;
@@ -112,6 +114,8 @@ export type ApiErrorCode =
   | "INVALID_SCOPE"
   | "INVALID_SIDE"
   | "INVALID_PATH"
+  | "WORKSPACE_PICK_CANCELLED"
+  | "WORKSPACE_PICK_UNSUPPORTED"
   | "INVALID_SETTINGS"
   | "INVALID_QUIZ_SESSION"
   | "INVALID_QUIZ_ANSWER"
@@ -145,8 +149,8 @@ export type PushRequest = { createUpstream?: boolean };
 
 export type QuizGenerationScope = "staged" | "all_changes";
 export type QuizValidationMode = "answer_all" | "pass_all" | "score_threshold";
-export type QuizProviderId = "codex" | "claude" | "opencode";
-export type QuizProviderPreference = "auto" | QuizProviderId;
+export type QuizProviderId = "codex";
+export type QuizProviderPreference = QuizProviderId;
 
 export type QuizSettings = {
   gateEnabled: boolean;
@@ -220,7 +224,6 @@ export type QuizSession = {
   status: QuizSessionStatus;
   sourceFingerprint: string;
   commitMessageDraft: string;
-  selectedPath: string | null;
   createdAt: string;
   updatedAt: string;
   progress: QuizSessionProgress;
@@ -232,7 +235,6 @@ export type QuizSession = {
 
 export type CreateQuizSessionRequest = {
   commitMessage: string;
-  selectedPath: string | null;
 };
 
 export type SubmitQuizAnswersRequest = {

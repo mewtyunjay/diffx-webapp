@@ -21,6 +21,15 @@ describe("toUiError", () => {
     });
   });
 
+  it("maps workspace picker unsupported errors to manual fallback guidance", () => {
+    const error = new ApiRequestError(501, "WORKSPACE_PICK_UNSUPPORTED", "unsupported");
+
+    expect(toUiError(error)).toEqual({
+      message: "Native folder picker is unavailable on this platform. Enter a path manually.",
+      retryable: false,
+    });
+  });
+
   it("falls back to generic error text for unknown values", () => {
     expect(toUiError(null)).toEqual({
       message: "Unexpected request failure",

@@ -2,7 +2,6 @@ import { useQuery } from "@tanstack/react-query";
 import { getRepoSummary } from "../services/api/repo";
 import { toUiError } from "../services/api/error-ui";
 import { queryKeys } from "../services/query-keys";
-import { NonGitGate } from "../components/gate/NonGitGate";
 import { AppShell } from "../components/layout/AppShell";
 
 export function AppRoot() {
@@ -37,10 +36,6 @@ export function AppRoot() {
         </div>
       </div>
     );
-  }
-
-  if (repoQuery.data.mode === "non-git") {
-    return <NonGitGate repoName={repoQuery.data.repoName} />;
   }
 
   return <AppShell initialRepo={repoQuery.data} />;

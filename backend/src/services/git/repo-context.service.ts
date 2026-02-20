@@ -1,6 +1,7 @@
 import path from "node:path";
 import { ApiRouteError } from "../../domain/api-route-error.js";
 import { GitCommandError, execGit, toGitApiError } from "./git-client.js";
+import { getWorkspaceState } from "../workspace.service.js";
 
 export type GitRepoContext = {
   mode: "git";
@@ -30,8 +31,7 @@ function isNotGitRepositoryError(error: GitCommandError): boolean {
 }
 
 export async function getRepoContext(): Promise<RepoContext> {
-  const configuredRoot = process.env.DIFFX_REPO_ROOT?.trim();
-  const candidateRoot = configuredRoot ? path.resolve(configuredRoot) : process.cwd();
+  const candidateRoot = getWorkspaceState().repoRoot;
 
   let repoRoot = candidateRoot;
 

@@ -88,6 +88,7 @@ describe("DiffPanel rendering", () => {
         onPaneModeChange={() => undefined}
         viewMode="split"
         onViewModeChange={() => undefined}
+        onOpenSettings={() => undefined}
         onPreviousFile={() => undefined}
         onNextFile={() => undefined}
         canGoPrevious={false}
@@ -114,6 +115,7 @@ describe("DiffPanel rendering", () => {
         onPaneModeChange={() => undefined}
         viewMode="split"
         onViewModeChange={() => undefined}
+        onOpenSettings={() => undefined}
         onPreviousFile={() => undefined}
         onNextFile={() => undefined}
         canGoPrevious={false}
@@ -145,6 +147,7 @@ describe("DiffPanel rendering", () => {
         onPaneModeChange={() => undefined}
         viewMode="split"
         onViewModeChange={() => undefined}
+        onOpenSettings={() => undefined}
         onPreviousFile={() => undefined}
         onNextFile={() => undefined}
         canGoPrevious={false}
@@ -166,7 +169,9 @@ describe("DiffPanel rendering", () => {
     expect(screen.queryByRole("button", { name: "retry diff" })).not.toBeInTheDocument();
   });
 
-  it("renders quiz panel content when pane mode is quiz", () => {
+  it("renders quiz panel content and top settings action in quiz mode", () => {
+    const onOpenSettings = vi.fn();
+
     render(
       <DiffPanel
         selectedFile={buildSelectedFile()}
@@ -175,6 +180,7 @@ describe("DiffPanel rendering", () => {
         onPaneModeChange={() => undefined}
         viewMode="split"
         onViewModeChange={() => undefined}
+        onOpenSettings={onOpenSettings}
         onPreviousFile={() => undefined}
         onNextFile={() => undefined}
         canGoPrevious={false}
@@ -196,5 +202,8 @@ describe("DiffPanel rendering", () => {
     expect(screen.getByRole("button", { name: "quiz" })).toBeInTheDocument();
     expect(screen.getByText("quiz panel content")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "split" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "settings" }));
+    expect(onOpenSettings).toHaveBeenCalledTimes(1);
   });
 });

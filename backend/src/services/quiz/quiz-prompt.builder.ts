@@ -36,7 +36,6 @@ function toScope(status: ChangedFile["status"]): DiffScope {
 function pickPromptFiles(
   files: ChangedFile[],
   settings: QuizSettings,
-  _selectedPath: string | null,
 ): ChangedFile[] {
   if (settings.scope === "all_changes") {
     return files;
@@ -65,13 +64,10 @@ function toFallbackPromptSection(file: ChangedFile): string {
   ].join("\n");
 }
 
-export async function buildQuizPromptContext(
-  settings: QuizSettings,
-  selectedPath: string | null,
-): Promise<QuizPromptContext> {
+export async function buildQuizPromptContext(settings: QuizSettings): Promise<QuizPromptContext> {
   const files = await getChangedFiles();
   const sourceFingerprint = toSourceFingerprint(files);
-  const promptFiles = pickPromptFiles(files, settings, selectedPath);
+  const promptFiles = pickPromptFiles(files, settings);
 
   if (promptFiles.length === 0) {
     return {
@@ -81,32 +77,29 @@ export async function buildQuizPromptContext(
     };
   }
 
-  const sections: string[] = [];
+  const sections = await Promise.all(
+    promptFiles.map(async (file) => {
+      const scope = toScope(file.status);
 
-  for (const file of promptFiles) {
-    const scope = toScope(file.status);
+      try {
+        const summary = await getDiffSummary(file.path, scope, 2);
 
-    try {
-      const summary = await getDiffSummary(file.path, scope, 2);
+        if (!summary.file || !summary.file.patch) {
+          return toFallbackPromptSection(file);
+        }
 
-      if (!summary.file || !summary.file.patch) {
-        sections.push(toFallbackPromptSection(file));
-        continue;
-      }
-
-      sections.push(
-        [
+        return [
           `File: ${summary.file.path}`,
           `Scope: ${scope}`,
           `Stats: +${summary.file.stats.additions} -${summary.file.stats.deletions} hunks:${summary.file.stats.hunks}`,
           "Patch:",
           toBoundedPatch(summary.file.patch),
-        ].join("\n"),
-      );
-    } catch {
-      sections.push(toFallbackPromptSection(file));
-    }
-  }
+        ].join("\n");
+      } catch {
+        return toFallbackPromptSection(file);
+      }
+    }),
+  );
 
   return {
     sourceFingerprint,
