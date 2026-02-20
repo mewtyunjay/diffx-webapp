@@ -125,7 +125,8 @@ describe("QuizPanel", () => {
       onUpdateQuizSettings,
     });
 
-    fireEvent.click(screen.getByRole("radio", { name: "staged only" }));
+    fireEvent.click(screen.getByRole("button", { name: "Scope" }));
+    fireEvent.click(screen.getByRole("option", { name: "staged only" }));
     expect(onUpdateQuizSettings).toHaveBeenCalledWith({
       ...QUIZ_SETTINGS,
       validationMode: "score_threshold",
@@ -133,7 +134,8 @@ describe("QuizPanel", () => {
       scope: "staged",
     });
 
-    fireEvent.change(screen.getByLabelText("Question count"), { target: { value: "5" } });
+    fireEvent.click(screen.getByRole("button", { name: "Question count" }));
+    fireEvent.click(screen.getByRole("option", { name: "5" }));
     expect(onUpdateQuizSettings).toHaveBeenCalledWith({
       ...QUIZ_SETTINGS,
       validationMode: "score_threshold",

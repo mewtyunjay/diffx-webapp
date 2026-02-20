@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import type {
   QuizGenerationScope,
   QuizSession,
@@ -8,16 +9,147 @@ import type {
 const MIN_QUESTION_COUNT = 1;
 const MAX_QUESTION_COUNT = 12;
 
-const SCOPE_OPTIONS: Array<{ value: QuizGenerationScope; label: string }> = [
+type DropdownOption = {
+  value: string;
+  label: string;
+};
+
+const SCOPE_OPTIONS: DropdownOption[] = [
   { value: "all_changes", label: "all files" },
   { value: "staged", label: "staged only" },
 ];
 
-const VALIDATION_OPTIONS: Array<{ value: QuizValidationMode; label: string }> = [
+const VALIDATION_OPTIONS: DropdownOption[] = [
   { value: "answer_all", label: "answer all" },
   { value: "pass_all", label: "pass all" },
   { value: "score_threshold", label: "score threshold" },
 ];
+
+const QUESTION_COUNT_OPTIONS: DropdownOption[] = Array.from(
+  { length: MAX_QUESTION_COUNT - MIN_QUESTION_COUNT + 1 },
+  (_, index) => {
+    const value = String(MIN_QUESTION_COUNT + index);
+
+    return {
+      value,
+      label: value,
+    };
+  },
+);
+
+type QuizSettingsDropdownProps = {
+  id: string;
+  label: string;
+  value: string;
+  options: DropdownOption[];
+  disabled: boolean;
+  onChange: (nextValue: string) => void;
+};
+
+function QuizSettingsDropdown({
+  id,
+  label,
+  value,
+  options,
+  disabled,
+  onChange,
+}: QuizSettingsDropdownProps) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    function onPointerDown(event: PointerEvent) {
+      if (!(event.target instanceof Node)) {
+        return;
+      }
+
+      if (!rootRef.current?.contains(event.target)) {
+        setOpen(false);
+      }
+    }
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (disabled && open) {
+      setOpen(false);
+    }
+  }, [disabled, open]);
+
+  const selectedOption = options.find((option) => option.value === value) ?? options[0] ?? null;
+  const selectedLabel = selectedOption?.label ?? "";
+  const listboxId = `${id}-listbox`;
+
+  return (
+    <div className="settings-dropdown" ref={rootRef}>
+      <button
+        className="settings-input settings-dropdown-trigger"
+        id={id}
+        type="button"
+        aria-label={label}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={listboxId}
+        disabled={disabled}
+        onClick={() => {
+          setOpen((current) => !current);
+        }}
+      >
+        <span className="settings-dropdown-value">{selectedLabel}</span>
+        <span
+          className={open ? "settings-dropdown-caret settings-dropdown-caret-open" : "settings-dropdown-caret"}
+          aria-hidden
+        />
+      </button>
+
+      {open ? (
+        <div className="settings-dropdown-menu" role="listbox" id={listboxId} aria-label={label}>
+          {options.map((option) => {
+            const selected = option.value === value;
+
+            return (
+              <button
+                key={option.value}
+                className={
+                  selected
+                    ? "settings-dropdown-option settings-dropdown-option-selected"
+                    : "settings-dropdown-option"
+                }
+                type="button"
+                role="option"
+                aria-selected={selected}
+                onClick={() => {
+                  onChange(option.value);
+                  setOpen(false);
+                }}
+              >
+                <span>{option.label}</span>
+                {selected ? <span className="settings-dropdown-check">✓</span> : null}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 type QuizPanelProps = {
   quizSettings: QuizSettings;
@@ -123,6 +255,18 @@ export function QuizPanel({
 }: QuizPanelProps) {
   if (!session) {
     const controlsDisabled = isCreatingSession || isLoadingSession || isSavingSettings;
+    const scoreThreshold = quizSettings.scoreThreshold ?? quizSettings.questionCount;
+    const thresholdOptions: DropdownOption[] = Array.from(
+      { length: quizSettings.questionCount },
+      (_, index) => {
+        const value = String(index + 1);
+
+        return {
+          value,
+          label: value,
+        };
+      },
+    );
 
     return (
       <div className="quiz-panel">
@@ -131,49 +275,32 @@ export function QuizPanel({
 
           <div className="quiz-inline-settings" role="form" aria-label="Quiz setup">
             <div className="quiz-inline-setting">
-              <p className="hud-label">Scope</p>
-              <div className="settings-segment" role="radiogroup" aria-label="Quiz generation scope">
-                {SCOPE_OPTIONS.map((option) => {
-                  const selected = quizSettings.scope === option.value;
-
-                  return (
-                    <button
-                      key={option.value}
-                      type="button"
-                      role="radio"
-                      aria-checked={selected}
-                      disabled={controlsDisabled}
-                      className={
-                        selected
-                          ? "settings-segment-button settings-segment-button-selected"
-                          : "settings-segment-button"
-                      }
-                      onClick={() => {
-                        onUpdateQuizSettings({
-                          ...quizSettings,
-                          scope: option.value,
-                        });
-                      }}
-                    >
-                      {option.label}
-                    </button>
-                  );
-                })}
-              </div>
+              <span className="hud-label">Scope</span>
+              <QuizSettingsDropdown
+                id="quiz-inline-scope"
+                label="Scope"
+                disabled={controlsDisabled}
+                value={quizSettings.scope}
+                options={SCOPE_OPTIONS}
+                onChange={(nextValue) => {
+                  onUpdateQuizSettings({
+                    ...quizSettings,
+                    scope: nextValue as QuizGenerationScope,
+                  });
+                }}
+              />
             </div>
 
-            <label className="quiz-inline-setting" htmlFor="quiz-inline-question-count">
+            <div className="quiz-inline-setting">
               <span className="hud-label">Question count</span>
-              <input
+              <QuizSettingsDropdown
                 id="quiz-inline-question-count"
-                className="settings-input settings-input-number"
-                type="number"
-                min={MIN_QUESTION_COUNT}
-                max={MAX_QUESTION_COUNT}
+                label="Question count"
                 disabled={controlsDisabled}
-                value={quizSettings.questionCount}
-                onChange={(event) => {
-                  const parsed = Number(event.target.value);
+                value={String(quizSettings.questionCount)}
+                options={QUESTION_COUNT_OPTIONS}
+                onChange={(nextValue) => {
+                  const parsed = Number(nextValue);
 
                   if (!Number.isInteger(parsed)) {
                     return;
@@ -192,58 +319,43 @@ export function QuizPanel({
                   });
                 }}
               />
-            </label>
+            </div>
 
             <div className="quiz-inline-setting">
-              <p className="hud-label">Validation mode</p>
-              <div className="settings-segment" role="radiogroup" aria-label="Quiz validation mode">
-                {VALIDATION_OPTIONS.map((option) => {
-                  const selected = quizSettings.validationMode === option.value;
+              <span className="hud-label">Validation mode</span>
+              <QuizSettingsDropdown
+                id="quiz-inline-validation-mode"
+                label="Validation mode"
+                disabled={controlsDisabled}
+                value={quizSettings.validationMode}
+                options={VALIDATION_OPTIONS}
+                onChange={(nextValue) => {
+                  const mode = nextValue as QuizValidationMode;
 
-                  return (
-                    <button
-                      key={option.value}
-                      type="button"
-                      role="radio"
-                      aria-checked={selected}
-                      disabled={controlsDisabled}
-                      className={
-                        selected
-                          ? "settings-segment-button settings-segment-button-selected"
-                          : "settings-segment-button"
-                      }
-                      onClick={() => {
-                        onUpdateQuizSettings({
-                          ...quizSettings,
-                          validationMode: option.value,
-                          scoreThreshold: normalizeScoreThreshold(
-                            option.value,
-                            quizSettings.scoreThreshold,
-                            quizSettings.questionCount,
-                          ),
-                        });
-                      }}
-                    >
-                      {option.label}
-                    </button>
-                  );
-                })}
-              </div>
+                  onUpdateQuizSettings({
+                    ...quizSettings,
+                    validationMode: mode,
+                    scoreThreshold: normalizeScoreThreshold(
+                      mode,
+                      quizSettings.scoreThreshold,
+                      quizSettings.questionCount,
+                    ),
+                  });
+                }}
+              />
             </div>
 
             {quizSettings.validationMode === "score_threshold" ? (
-              <label className="quiz-inline-setting" htmlFor="quiz-inline-threshold">
+              <div className="quiz-inline-setting">
                 <span className="hud-label">Score threshold</span>
-                <input
+                <QuizSettingsDropdown
                   id="quiz-inline-threshold"
-                  className="settings-input settings-input-number"
-                  type="number"
-                  min={1}
-                  max={quizSettings.questionCount}
+                  label="Score threshold"
                   disabled={controlsDisabled}
-                  value={quizSettings.scoreThreshold ?? quizSettings.questionCount}
-                  onChange={(event) => {
-                    const parsed = Number(event.target.value);
+                  value={String(scoreThreshold)}
+                  options={thresholdOptions}
+                  onChange={(nextValue) => {
+                    const parsed = Number(nextValue);
 
                     if (!Number.isInteger(parsed)) {
                       return;
@@ -257,7 +369,7 @@ export function QuizPanel({
                     });
                   }}
                 />
-              </label>
+              </div>
             ) : null}
           </div>
 

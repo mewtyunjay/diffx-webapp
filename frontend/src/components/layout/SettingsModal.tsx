@@ -22,6 +22,18 @@ const PROVIDER_OPTIONS: Array<{ value: QuizProviderPreference; label: string }> 
   { value: "codex", label: "codex" },
 ];
 
+function normalizeIntegerTextInput(value: string): string | null {
+  if (value === "") {
+    return "";
+  }
+
+  if (!/^\d+$/.test(value)) {
+    return null;
+  }
+
+  return String(Number.parseInt(value, 10));
+}
+
 type SettingsModalProps = {
   open: boolean;
   settings: AppSettings;
@@ -116,8 +128,17 @@ export function SettingsModal({
               type="number"
               min={1}
               max={12}
+              step={1}
+              inputMode="numeric"
               value={questionCount}
-              onChange={(event) => setQuestionCount(event.target.value)}
+              onChange={(event) => {
+                const normalized = normalizeIntegerTextInput(event.target.value);
+                if (normalized === null) {
+                  return;
+                }
+
+                setQuestionCount(normalized);
+              }}
             />
           </label>
 
