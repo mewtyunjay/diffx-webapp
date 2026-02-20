@@ -1411,7 +1411,6 @@ export function AppShell({ initialRepo }: AppShellProps) {
         />
 
         <SidebarShell
-          repoName={repo.repoName}
           branch={repo.branch}
           activeTab={activeTab}
           onChangeTab={setActiveTab}

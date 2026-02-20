@@ -4,7 +4,6 @@ type CommitComposerMessage = {
 } | null;
 
 type CommitComposerProps = {
-  repoName: string;
   branch: string | null;
   commitMessage: string;
   isCommitting: boolean;
@@ -21,7 +20,6 @@ type CommitComposerProps = {
 };
 
 export function CommitComposer({
-  repoName,
   branch,
   commitMessage,
   isCommitting,
@@ -41,7 +39,6 @@ export function CommitComposer({
   return (
     <section className="commit-composer" aria-label="Commit composer">
       <div className="commit-composer-meta">
-        <p className="commit-composer-repo">{repoName}</p>
         <p className="commit-composer-branch">
           <svg
             className="commit-composer-branch-icon"

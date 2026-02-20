@@ -10,7 +10,6 @@ type CommitComposerMessage = {
 } | null;
 
 type SidebarShellProps = {
-  repoName: string;
   branch: string | null;
   activeTab: SidebarTabId;
   onChangeTab: (tab: SidebarTabId) => void;
@@ -41,7 +40,6 @@ type SidebarShellProps = {
 };
 
 export function SidebarShell({
-  repoName,
   branch,
   activeTab,
   onChangeTab,
@@ -120,7 +118,6 @@ export function SidebarShell({
       </div>
 
       <CommitComposer
-        repoName={repoName}
         branch={branch}
         commitMessage={commitMessage}
         isCommitting={isCommitting}

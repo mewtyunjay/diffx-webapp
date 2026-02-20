@@ -5,7 +5,6 @@ import { CommitComposer } from "./CommitComposer";
 
 function renderComposer(overrides?: Partial<React.ComponentProps<typeof CommitComposer>>) {
   const props: React.ComponentProps<typeof CommitComposer> = {
-    repoName: "diffx-webapp",
     branch: "main",
     commitMessage: "",
     isCommitting: false,
@@ -30,10 +29,9 @@ describe("CommitComposer", () => {
     cleanup();
   });
 
-  it("renders repo/branch header and three-line editor", () => {
+  it("renders branch header with icon and three-line editor", () => {
     renderComposer();
 
-    expect(screen.getByText("diffx-webapp")).toBeInTheDocument();
     expect(screen.getByText("main")).toBeInTheDocument();
     expect(document.querySelector(".commit-composer-branch-icon")).toBeInTheDocument();
     expect(screen.getByPlaceholderText("enter commit message here")).toHaveAttribute("rows", "3");
@@ -82,7 +80,6 @@ describe("CommitComposer", () => {
   it("shows commit tooltip only when provided", () => {
     const { rerender } = render(
       <CommitComposer
-        repoName="diffx-webapp"
         branch="main"
         commitMessage=""
         isCommitting={false}
@@ -106,7 +103,6 @@ describe("CommitComposer", () => {
 
     rerender(
       <CommitComposer
-        repoName="diffx-webapp"
         branch="main"
         commitMessage=""
         isCommitting={false}
