@@ -2,122 +2,128 @@
 
 DiffX is a local Git diff review UI with quiz-gated commit workflow.
 
-## Development
+## Monorepo layout
+
+- `frontend/` React + Vite UI
+- `backend/` Express + TypeScript API and CLI runtime
+- `shared/contracts/` shared API/domain types
+
+## Prerequisites
+
+- Bun
+- Node.js
+
+## Quick start (development)
+
+Run from repo root:
+
+```bash
+bun install
+bun run dev:backend
+bun run dev:frontend
+```
+
+Defaults:
+
+- backend API: `http://localhost:3001`
+- frontend app: `http://localhost:5173`
+
+## Build and test
 
 From repo root:
 
 ```bash
-bun install
-bun run dev:backend
-bun run dev:frontend
-```
-
-Backend defaults to `http://localhost:3001` and frontend defaults to `http://localhost:5173`.
-
-## Run Commands
-
-Use these from repo root.
-
-Dev mode (recommended while coding):
-
-```bash
-bun install
-bun run dev:backend
-bun run dev:frontend
-```
-
-Build both apps:
-
-```bash
+bun run test
 bun run build
 ```
 
-Run the built local executable from this repo:
+Useful targeted scripts:
 
 ```bash
-bun run start
-```
-
-Run executable against a specific repo path:
-
-```bash
-bun run start -- /absolute/or/relative/repo/path
-```
-
-Useful scripts:
-
-```bash
-bun run test
 bun run test:backend
 bun run test:frontend
 bun run build:backend
 bun run build:frontend
 ```
 
-## Runtime Logging
+## CLI usage (built app)
 
-DiffX now ships with metadata-only runtime logging so you can trace what the app is doing in real time.
+The root `start` script runs the built executable entrypoint:
 
-- Backend logs request lifecycle for `/api/*` calls (method, path, query/body keys, status, duration).
-- Backend logs Git command execution metadata (subcommand, flags count, exit code, duration, stdout/stderr byte size).
-- Backend logs quiz/provider lifecycle decisions (provider selection, availability checks, quiz session progression).
+```bash
+bun run start
+```
 
-### Privacy model
+Target a specific repository:
+
+```bash
+bun run start -- /absolute/or/relative/repo/path
+```
+
+Show CLI help:
+
+```bash
+bun run start -- --help
+```
+
+CLI flags:
+
+- `--port` / `-p` (default: `3210`)
+- `--host` (default: `127.0.0.1`)
+- `--no-open` (disable browser auto-open)
+
+## Environment and logging
+
+### Backend logging
 
 Logging is metadata-only:
 
-- No request body values are logged.
-- No commit message bodies or quiz prompt text is logged.
-- Route errors log typed codes and detail keys, not full payload content.
+- request lifecycle for `/api/*`
+- Git command lifecycle metadata
+- quiz/provider lifecycle metadata
+- typed route error metadata
 
-### Logging env flags
+No request bodies, commit message text, or full quiz prompt payloads are logged.
 
-Backend flags:
+Backend logging env vars:
 
-- `DIFFX_LOG_LEVEL=debug|info|warn|error` (default: `info`)
-- `DIFFX_LOG_APP=1|0` (default: `1`)
-- `DIFFX_LOG_HTTP=1|0` (default: `1`)
-- `DIFFX_LOG_GIT=1|0` (default: `1`)
-- `DIFFX_LOG_QUIZ=1|0` (default: `1`)
-- `DIFFX_LOG_PROVIDER=1|0` (default: `1`)
-- `DIFFX_LOG_FORCE=1|0` (default: `0`; can force logs even in test mode)
+- `DIFFX_LOG_LEVEL=debug|info|warn|error`
+- `DIFFX_LOG_APP=1|0`
+- `DIFFX_LOG_HTTP=1|0`
+- `DIFFX_LOG_GIT=1|0`
+- `DIFFX_LOG_QUIZ=1|0`
+- `DIFFX_LOG_PROVIDER=1|0`
+- `DIFFX_LOG_FORCE=1|0`
 
-Frontend API proxy target (optional):
+### Frontend API proxy
 
-- `DIFFX_API_PROXY_TARGET=http://localhost:3001` (default shown)
+- `DIFFX_API_PROXY_TARGET=http://localhost:3001` (optional; defaults to this value)
 
-Example:
+### Workspace root
 
-```bash
-DIFFX_LOG_LEVEL=debug DIFFX_LOG_GIT=1 bun run dev:backend
-DIFFX_API_PROXY_TARGET=http://localhost:3001 bun run dev:frontend
-```
+- `DIFFX_REPO_ROOT=/path/to/repo` (optional startup workspace root)
 
-## Quiz Provider Auth (Codex)
+### Quiz provider config (Codex)
 
-DiffX quiz generation uses Codex local auth from your machine.
+- `DIFFX_QUIZ_PROVIDER=codex`
+- `DIFFX_QUIZ_CODEX_MODEL=<model>`
+- `DIFFX_QUIZ_CODEX_REASONING_EFFORT=minimal|low|medium|high|xhigh`
 
-- Codex auth check: `codex login status`
-
-## Build
+Optional local auth check:
 
 ```bash
-bun run build
+codex login status
 ```
 
-## Local Executable Distribution
+## Local executable packaging
 
-DiffX can be packed as an executable CLI and run from any folder.
-
-### 1) Build + pack tarball
+Build and pack:
 
 ```bash
 bun run pack:local
 ```
 
-This creates a tarball like `diffx-0.1.0.tgz`.
-
-### 2) Install globally from tarball
+Install tarball globally:
 
 ```bash
 npm i -g ./diffx-0.1.0.tgz
@@ -129,15 +135,19 @@ or
 bun install -g ./diffx-0.1.0.tgz
 ```
 
-### 3) Run from any folder
+Then run from any repo folder:
 
 ```bash
-cd /path/to/any/git/repo
 diffx
 ```
 
-Optional arguments:
+## Troubleshooting
 
-```bash
-diffx [repoPath] --port 3210 --host 127.0.0.1 --no-open
-```
+- If `bun run start` fails with missing build artifacts, run `bun run build` first.
+- If frontend cannot reach backend, set `DIFFX_API_PROXY_TARGET` before starting Vite.
+- Native folder picker is macOS-only; use manual path entry on other platforms.
+
+## Workspace README files
+
+- `frontend/README.md`
+- `backend/README.md`

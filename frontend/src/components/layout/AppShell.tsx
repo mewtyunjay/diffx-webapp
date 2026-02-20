@@ -43,7 +43,6 @@ import { DiffPanel } from "../diff/DiffPanel";
 import { QuizPanel } from "../diff/QuizPanel";
 import { NonGitGate } from "../gate/NonGitGate";
 import { SidebarShell } from "../sidebar/SidebarShell";
-import type { SidebarTabId } from "../sidebar/tabRegistry";
 import { SettingsModal } from "./SettingsModal";
 import { StatusBar } from "./StatusBar";
 import { Topbar } from "./Topbar";
@@ -268,7 +267,6 @@ function toLocalFileSignature(files: ChangedFile[]): string {
 
 export function AppShell({ initialRepo }: AppShellProps) {
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<SidebarTabId>("files");
   const [selectedFileRef, setSelectedFileRef] = useState<SelectedFileRef | null>(null);
   const [paneMode, setPaneMode] = useState<DiffPaneMode>("diff");
   const [viewMode, setViewMode] = useState<DiffViewMode>("split");
@@ -1412,8 +1410,6 @@ export function AppShell({ initialRepo }: AppShellProps) {
 
         <SidebarShell
           branch={repo.branch}
-          activeTab={activeTab}
-          onChangeTab={setActiveTab}
           files={files}
           selectedFile={selectedFile}
           isLoadingFiles={filesQuery.isPending}

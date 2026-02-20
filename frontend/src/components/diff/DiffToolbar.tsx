@@ -1,4 +1,6 @@
 import type { DiffPaneMode, DiffViewMode } from "@diffx/contracts";
+import diffSplitIcon from "../../assets/icons/diff-split.svg";
+import diffUnifiedIcon from "../../assets/icons/diff-unified.svg";
 
 type DiffToolbarProps = {
   paneMode: DiffPaneMode;
@@ -7,6 +9,18 @@ type DiffToolbarProps = {
   onViewModeChange: (mode: DiffViewMode) => void;
   onOpenSettings: () => void;
 };
+
+function SplitIcon() {
+  return (
+    <img className="diff-toolbar-mode-icon diff-toolbar-mode-icon-image" src={diffSplitIcon} alt="" />
+  );
+}
+
+function UnifiedIcon() {
+  return (
+    <img className="diff-toolbar-mode-icon diff-toolbar-mode-icon-image" src={diffUnifiedIcon} alt="" />
+  );
+}
 
 export function DiffToolbar({
   paneMode,
@@ -39,18 +53,30 @@ export function DiffToolbar({
       {paneMode === "diff" ? (
         <div className="diff-toolbar-group diff-mode-switch">
           <button
-            className={viewMode === "split" ? "hud-button hud-button-active" : "hud-button"}
+            className={
+              viewMode === "split"
+                ? "hud-button diff-view-mode-button hud-button-active"
+                : "hud-button diff-view-mode-button"
+            }
             type="button"
+            aria-label="split"
+            title="split"
             onClick={() => onViewModeChange("split")}
           >
-            split
+            <SplitIcon />
           </button>
           <button
-            className={viewMode === "unified" ? "hud-button hud-button-active" : "hud-button"}
+            className={
+              viewMode === "unified"
+                ? "hud-button diff-view-mode-button hud-button-active"
+                : "hud-button diff-view-mode-button"
+            }
             type="button"
+            aria-label="unified"
+            title="unified"
             onClick={() => onViewModeChange("unified")}
           >
-            unified
+            <UnifiedIcon />
           </button>
         </div>
       ) : (

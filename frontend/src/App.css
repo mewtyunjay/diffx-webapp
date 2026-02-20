@@ -113,6 +113,34 @@
   justify-content: flex-start;
 }
 
+.diff-view-mode-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.15rem;
+  height: 2.15rem;
+  padding: 0;
+  color: #fff;
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+.diff-view-mode-button:hover:not(:disabled),
+.diff-view-mode-button.hud-button-active {
+  color: #fff;
+}
+
+.diff-toolbar-mode-icon {
+  display: block;
+  width: 1.2rem;
+  height: 1.2rem;
+}
+
+.diff-toolbar-mode-icon-image {
+  object-fit: contain;
+  filter: brightness(0) invert(1);
+}
+
 .diff-toolbar-spacer {
   flex: 1;
 }

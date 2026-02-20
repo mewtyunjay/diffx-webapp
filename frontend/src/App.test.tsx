@@ -373,7 +373,7 @@ describe("App", () => {
     expect(await screen.findByRole("button", { name: "diffx-webapp" })).toBeInTheDocument();
   });
 
-  it("renders app shell with topbar and tabs in git mode", async () => {
+  it("renders app shell with topbar and files sidebar in git mode", async () => {
     getRepoSummaryMock.mockResolvedValue(
       buildGitRepoSummary({ stagedCount: 1, unstagedCount: 2 }),
     );
@@ -387,7 +387,8 @@ describe("App", () => {
     renderWithQueryClient();
 
     expect(await screen.findByRole("button", { name: "diffx-webapp" })).toBeInTheDocument();
-    expect(await screen.findByRole("tab", { name: "Files" })).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Files" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Actions" })).not.toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "app.ts" })).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "split" })).toBeInTheDocument();
     expect(screen.queryByText(/^branch:/i)).not.toBeInTheDocument();

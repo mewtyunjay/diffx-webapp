@@ -1,8 +1,6 @@
 import type { ChangedFile } from "@diffx/contracts";
-import { tabRegistry, type SidebarTabId } from "./tabRegistry";
 import { CommitComposer } from "./CommitComposer";
 import { FilesTab } from "./tabs/FilesTab";
-import { ActionsTab } from "./tabs/ActionsTab";
 
 type CommitComposerMessage = {
   tone: "info" | "error";
@@ -11,8 +9,6 @@ type CommitComposerMessage = {
 
 type SidebarShellProps = {
   branch: string | null;
-  activeTab: SidebarTabId;
-  onChangeTab: (tab: SidebarTabId) => void;
   files: ChangedFile[];
   selectedFile: ChangedFile | null;
   isLoadingFiles: boolean;
@@ -41,8 +37,6 @@ type SidebarShellProps = {
 
 export function SidebarShell({
   branch,
-  activeTab,
-  onChangeTab,
   files,
   selectedFile,
   isLoadingFiles,
@@ -70,51 +64,30 @@ export function SidebarShell({
 }: SidebarShellProps) {
   return (
     <aside className="sidebar-shell">
-      <div className="sidebar-tabs" role="tablist" aria-label="Sidebar tabs">
-        {tabRegistry.map((tab) => (
-          <button
-            key={tab.id}
-            role="tab"
-            type="button"
-            aria-selected={activeTab === tab.id}
-            className={activeTab === tab.id ? "hud-tab hud-tab-active" : "hud-tab"}
-            onClick={() => onChangeTab(tab.id)}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
       <div className="sidebar-content">
-        {activeTab === "files" ? (
-          <>
-            {isLoadingFiles ? <p className="inline-note">Loading files...</p> : null}
-            {filesError ? (
-              <div className="inline-error-block">
-                <p className="error-note">{filesError}</p>
-                {filesErrorRetryable ? (
-                  <button className="hud-button hud-button-compact" type="button" onClick={onRetryFiles}>
-                    retry files
-                  </button>
-                ) : null}
-              </div>
+        {isLoadingFiles ? <p className="inline-note">Loading files...</p> : null}
+        {filesError ? (
+          <div className="inline-error-block">
+            <p className="error-note">{filesError}</p>
+            {filesErrorRetryable ? (
+              <button className="hud-button hud-button-compact" type="button" onClick={onRetryFiles}>
+                retry files
+              </button>
             ) : null}
-            {!isLoadingFiles && !filesError ? (
-              <FilesTab
-                files={files}
-                selectedFile={selectedFile}
-                onSelectFile={onSelectFile}
-                onStageFile={onStageFile}
-                onUnstageFile={onUnstageFile}
-                onStageFiles={onStageFiles}
-                onUnstageFiles={onUnstageFiles}
-                pendingMutationsByPath={pendingMutationsByPath}
-              />
-            ) : null}
-          </>
-        ) : (
-          <ActionsTab />
-        )}
+          </div>
+        ) : null}
+        {!isLoadingFiles && !filesError ? (
+          <FilesTab
+            files={files}
+            selectedFile={selectedFile}
+            onSelectFile={onSelectFile}
+            onStageFile={onStageFile}
+            onUnstageFile={onUnstageFile}
+            onStageFiles={onStageFiles}
+            onUnstageFiles={onUnstageFiles}
+            pendingMutationsByPath={pendingMutationsByPath}
+          />
+        ) : null}
       </div>
 
       <CommitComposer
