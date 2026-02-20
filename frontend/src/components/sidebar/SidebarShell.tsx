@@ -25,6 +25,7 @@ type SidebarShellProps = {
   isGeneratingCommitMessage: boolean;
   commitMessage: string;
   commitDisabled: boolean;
+  commitTooltip?: string;
   canPush: boolean;
   commitMessageStatus: CommitComposerMessage;
   onCommitMessageChange: (message: string) => void;
@@ -55,6 +56,7 @@ export function SidebarShell({
   isGeneratingCommitMessage,
   commitMessage,
   commitDisabled,
+  commitTooltip,
   canPush,
   commitMessageStatus,
   onCommitMessageChange,
@@ -125,6 +127,7 @@ export function SidebarShell({
         isPushing={isPushing}
         isGeneratingMessage={isGeneratingCommitMessage}
         commitDisabled={commitDisabled}
+        commitTooltip={commitTooltip}
         canPush={canPush}
         message={commitMessageStatus}
         onCommitMessageChange={onCommitMessageChange}

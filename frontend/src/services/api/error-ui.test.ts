@@ -25,11 +25,11 @@ describe("toUiError", () => {
     const error = new ApiRequestError(
       502,
       "COMMIT_MESSAGE_GENERATION_FAILED",
-      "codex unavailable",
+      "Stage at least one file before generating a commit message.",
     );
 
     expect(toUiError(error)).toEqual({
-      message: "Unable to generate a commit message. Verify local Codex login and retry.",
+      message: "Stage at least one file before generating a commit message.",
       retryable: true,
     });
   });

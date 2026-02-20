@@ -20,7 +20,6 @@
 }
 
 .topbar-left,
-.topbar-center,
 .topbar-right {
   display: flex;
   align-items: center;
@@ -28,9 +27,8 @@
   min-width: 0;
 }
 
-.topbar-center {
+.topbar-left {
   flex: 1;
-  justify-content: center;
 }
 
 .wordmark {
@@ -443,9 +441,37 @@
 
 .commit-composer-repo {
   margin: 0;
+  color: var(--color-text-bright);
+  font-size: var(--font-size-body);
+  letter-spacing: 0.05em;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.commit-composer-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.72rem;
+  min-width: 0;
+}
+
+.commit-composer-branch {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.34rem;
   color: var(--color-text-dim);
   font-size: var(--font-size-control);
   letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+
+.commit-composer-branch-icon {
+  width: 1rem;
+  height: 1rem;
+  flex-shrink: 0;
 }
 
 .commit-composer-input-shell {
@@ -1432,11 +1458,8 @@
     padding: 0.8rem 1.2rem;
   }
 
-  .topbar-center {
-    justify-content: flex-start;
-    order: 3;
-    width: 100%;
-    overflow-x: auto;
+  .topbar-right {
+    margin-left: auto;
   }
 
   .workspace {

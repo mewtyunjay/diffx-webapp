@@ -59,6 +59,7 @@ type FilesDockMessage = {
   tone: "info" | "error";
   text: string;
 } | null;
+const FILES_DOCK_ERROR_AUTO_CLEAR_MS = 2_000;
 type SelectedFileRef = {
   path: string;
   status: ChangedFileStatus;
@@ -282,6 +283,26 @@ export function AppShell({ initialRepo }: AppShellProps) {
   const [quizStreamError, setQuizStreamError] = useState<string | null>(null);
   const [bypassArmed, setBypassArmed] = useState(false);
   const [quizUnlockSignature, setQuizUnlockSignature] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (filesDockMessage?.tone !== "error") {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setFilesDockMessage((current) => {
+        if (current?.tone !== "error") {
+          return current;
+        }
+
+        return null;
+      });
+    }, FILES_DOCK_ERROR_AUTO_CLEAR_MS);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [filesDockMessage]);
   const [pendingMutationsByPath, setPendingMutationsByPath] = useState<Map<string, PendingFileMutation>>(
     () => new Map(),
   );
@@ -1050,10 +1071,6 @@ export function AppShell({ initialRepo }: AppShellProps) {
     },
     onSuccess: (response) => {
       setCommitMessageDraft(response.message);
-      setFilesDockMessage({
-        tone: "info",
-        text: "Generated commit message with Codex 5.3 spark.",
-      });
     },
     onError: (error) => {
       setFilesDockMessage({
@@ -1295,6 +1312,10 @@ export function AppShell({ initialRepo }: AppShellProps) {
 
   const trimmedCommitDraft = commitMessageDraft.trim();
   const requiresFinalCommitMessage = !quizGateEnabled || quizValidationPassed || commitBypassActive;
+  const commitTooltip =
+    quizGateEnabled && !quizValidationPassed && !commitBypassActive
+      ? "Complete quiz validation before commit."
+      : undefined;
   const commitActionDisabled =
     (requiresFinalCommitMessage && trimmedCommitDraft.length === 0) ||
     repo.stagedCount === 0 ||
@@ -1364,7 +1385,6 @@ export function AppShell({ initialRepo }: AppShellProps) {
         onRefresh={() => void refreshQueries()}
         onOpenSettings={() => setSettingsOpen(true)}
         onPickWorkspace={requestWorkspacePick}
-        quizGateEnabled={settings.quiz.gateEnabled}
       />
 
       <main className="workspace">
@@ -1406,6 +1426,7 @@ export function AppShell({ initialRepo }: AppShellProps) {
           isGeneratingCommitMessage={generateCommitMessageMutation.isPending}
           commitMessage={commitMessageDraft}
           commitDisabled={commitActionDisabled}
+          commitTooltip={commitTooltip}
           canPush={filesDockMode === "push"}
           commitMessageStatus={filesDockMessage}
           onCommitMessageChange={(message) => {

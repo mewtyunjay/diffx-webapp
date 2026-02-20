@@ -370,7 +370,7 @@ describe("App", () => {
       expect(getRepoSummaryMock.mock.calls.length).toBeGreaterThanOrEqual(3);
     });
 
-    expect(await screen.findByText("diffx-webapp")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "diffx-webapp" })).toBeInTheDocument();
   });
 
   it("renders app shell with topbar and tabs in git mode", async () => {
@@ -386,10 +386,12 @@ describe("App", () => {
 
     renderWithQueryClient();
 
-    expect(await screen.findByText("diffx-webapp")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "diffx-webapp" })).toBeInTheDocument();
     expect(await screen.findByRole("tab", { name: "Files" })).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "app.ts" })).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "split" })).toBeInTheDocument();
+    expect(screen.queryByText(/^branch:/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^quiz gate:/i)).not.toBeInTheDocument();
   });
 
   it("retries files query on retryable failures", async () => {
@@ -682,7 +684,7 @@ describe("App", () => {
 
     renderWithQueryClient();
 
-    const messageBox = await screen.findByPlaceholderText("describe why this change exists");
+    const messageBox = await screen.findByPlaceholderText("enter commit message here");
     fireEvent.change(messageBox, { target: { value: "ship files dock" } });
 
     const commitButton = screen.getByRole("button", { name: "commit" });
@@ -711,15 +713,48 @@ describe("App", () => {
 
     renderWithQueryClient();
 
-    const messageBox = await screen.findByPlaceholderText("describe why this change exists");
+    const messageBox = await screen.findByPlaceholderText("enter commit message here");
 
-    fireEvent.click(screen.getByRole("button", { name: "Generate commit message (Codex 5.3 spark)" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Generate commit message" }));
 
     await waitFor(() => {
       expect(generateCommitMessageMock).toHaveBeenCalledWith({ draft: "" });
     });
 
     expect(messageBox).toHaveValue("ship files dock");
+    expect(screen.queryByText("Generated commit message with Codex 5.3 spark.")).not.toBeInTheDocument();
+  });
+
+  it("auto-dismisses commit generator error after 2 seconds", async () => {
+    getRepoSummaryMock.mockResolvedValue(buildGitRepoSummary({ stagedCount: 0 }));
+    getChangedFilesMock.mockResolvedValue([]);
+    getHealthMock.mockResolvedValue({ ok: true });
+
+    generateCommitMessageMock.mockRejectedValue(
+      new ApiRequestError(
+        409,
+        "COMMIT_MESSAGE_GENERATION_FAILED",
+        "Stage at least one file before generating a commit message.",
+      ),
+    );
+
+    renderWithQueryClient();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Generate commit message" }));
+
+    const errorMessage = await screen.findByText(
+      "Stage at least one file before generating a commit message.",
+    );
+    expect(errorMessage).toBeInTheDocument();
+
+    await waitFor(
+      () => {
+        expect(
+          screen.queryByText("Stage at least one file before generating a commit message."),
+        ).not.toBeInTheDocument();
+      },
+      { timeout: 3000 },
+    );
   });
 
   it("silently retries push with upstream creation when upstream is missing", async () => {
@@ -759,7 +794,7 @@ describe("App", () => {
 
     renderWithQueryClient();
 
-    const messageBox = await screen.findByPlaceholderText("describe why this change exists");
+    const messageBox = await screen.findByPlaceholderText("enter commit message here");
     fireEvent.change(messageBox, { target: { value: "ship files dock" } });
     fireEvent.click(screen.getByRole("button", { name: "commit" }));
 
@@ -858,13 +893,14 @@ describe("App", () => {
 
     renderWithQueryClient();
 
-    const messageBox = await screen.findByPlaceholderText("describe why this change exists");
+    const messageBox = await screen.findByPlaceholderText("enter commit message here");
     fireEvent.change(messageBox, { target: { value: "ship files dock" } });
 
     const commitToOpenQuizButton = screen.getByRole("button", { name: "commit" });
     await waitFor(() => {
       expect(commitToOpenQuizButton).toBeEnabled();
     });
+    expect(commitToOpenQuizButton).toHaveAttribute("title", "Complete quiz validation before commit.");
     fireEvent.click(commitToOpenQuizButton);
 
     expect(createQuizSessionMock).not.toHaveBeenCalled();
@@ -889,6 +925,7 @@ describe("App", () => {
     });
 
     const commitButton = await screen.findByRole("button", { name: "commit" });
+    expect(commitButton).not.toHaveAttribute("title");
     fireEvent.click(commitButton);
 
     await waitFor(() => {

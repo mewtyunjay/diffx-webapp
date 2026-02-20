@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { Codex } from "@openai/codex-sdk";
+import { Codex, type RunResult, type ThreadItem } from "@openai/codex-sdk";
 import type {
   ActionResponse,
   GenerateCommitMessageRequest,
@@ -56,12 +56,12 @@ function resolveUniqueRelativePaths(repoRoot: string, requestedPaths: string[]):
 const execFileAsync = promisify(execFile);
 const API_KEY_ENV_KEYS = new Set(["OPENAI_API_KEY", "CODEX_API_KEY"]);
 const RECENT_COMMIT_HISTORY_LIMIT = 6;
-const STAGED_FILE_CONTEXT_LIMIT = 6;
-const MAX_PATCH_LINES_PER_FILE = 80;
 const AUTH_CHECK_TIMEOUT_MS = 5000;
 const COMMIT_MESSAGE_MODEL = "gpt-5.3-codex-spark";
 const MAX_RESPONSE_TEXT_DEPTH = 8;
 const MAX_RESPONSE_TEXT_PARTS = 2000;
+const COMMIT_MESSAGE_PLACEHOLDER_PATTERN = /^item[\s_-]*\d+$/i;
+const COMMIT_MESSAGE_ALPHA_PATTERN = /[a-z]/i;
 
 function isTestRuntime(): boolean {
   return process.env.NODE_ENV === "test" || process.env.VITEST === "true";
@@ -85,12 +85,12 @@ function buildLocalCodexEnv(): Record<string, string> {
   return env;
 }
 
-function toBoundedPatch(patch: string): string {
-  return patch
-    .split("\n")
-    .slice(0, MAX_PATCH_LINES_PER_FILE)
-    .map((line) => (line.length > 300 ? `${line.slice(0, 300)}...` : line))
-    .join("\n");
+type FileWithStatus = {
+  status: string;
+};
+
+export function filterStagedFilesForCommitContext<TFile extends FileWithStatus>(files: TFile[]): TFile[] {
+  return files.filter((file) => file.status === "staged");
 }
 
 function collectTextParts(
@@ -149,6 +149,70 @@ function normalizeResponseText(value: unknown): string | null {
   return parts.join("\n");
 }
 
+function asNonEmptyText(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  return value.trim().length > 0 ? value : null;
+}
+
+function extractAgentMessageText(items: unknown): string | null {
+  if (!Array.isArray(items)) {
+    return null;
+  }
+
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+
+    if (!item || typeof item !== "object") {
+      continue;
+    }
+
+    const threadItem = item as ThreadItem;
+    if (threadItem.type !== "agent_message") {
+      continue;
+    }
+
+    const text = asNonEmptyText(threadItem.text);
+    if (text) {
+      return text;
+    }
+  }
+
+  return null;
+}
+
+export function extractCommitMessageResponseText(value: unknown): string | null {
+  const directText = asNonEmptyText(value);
+  if (directText) {
+    return directText;
+  }
+
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const runResult = value as Partial<RunResult> & Record<string, unknown>;
+  const preferredTexts = [
+    asNonEmptyText(runResult.finalResponse),
+    extractAgentMessageText(runResult.items),
+    asNonEmptyText(runResult.output_text),
+    asNonEmptyText(runResult.message),
+    asNonEmptyText(runResult.response),
+    asNonEmptyText(runResult.result),
+    asNonEmptyText(runResult.text),
+  ];
+
+  for (const preferredText of preferredTexts) {
+    if (preferredText) {
+      return preferredText;
+    }
+  }
+
+  return normalizeResponseText(value);
+}
+
 export function sanitizeCommitMessageSuggestion(value: string): string | null {
   const lines = value
     .split(/\r?\n/)
@@ -164,6 +228,14 @@ export function sanitizeCommitMessageSuggestion(value: string): string | null {
       .trim();
 
     if (candidate.length === 0) {
+      continue;
+    }
+
+    if (COMMIT_MESSAGE_PLACEHOLDER_PATTERN.test(candidate)) {
+      continue;
+    }
+
+    if (!COMMIT_MESSAGE_ALPHA_PATTERN.test(candidate)) {
       continue;
     }
 
@@ -206,7 +278,7 @@ async function getRecentCommitSubjects(repoRoot: string): Promise<string[]> {
 
 async function getStagedFileContext(): Promise<string> {
   const files = await getChangedFiles();
-  const stagedFiles = files.filter((file) => file.status === "staged").slice(0, STAGED_FILE_CONTEXT_LIMIT);
+  const stagedFiles = filterStagedFilesForCommitContext(files);
 
   if (stagedFiles.length === 0) {
     throw new ApiRouteError(
@@ -236,7 +308,7 @@ async function getStagedFileContext(): Promise<string> {
           `File: ${summary.file.path}`,
           `Stats: +${summary.file.stats.additions} -${summary.file.stats.deletions} hunks:${summary.file.stats.hunks}`,
           "Patch:",
-          toBoundedPatch(summary.file.patch),
+          summary.file.patch,
         ].join("\n");
       } catch {
         return [
@@ -582,7 +654,7 @@ export async function generateCommitMessage(
         modelReasoningEffort: "medium",
       });
       const rawResponse = await thread.run(prompt);
-      const responseText = normalizeResponseText(rawResponse);
+      const responseText = extractCommitMessageResponseText(rawResponse);
 
       if (!responseText) {
         throw new ApiRouteError(

@@ -11,6 +11,7 @@ type CommitComposerProps = {
   isPushing: boolean;
   isGeneratingMessage: boolean;
   commitDisabled: boolean;
+  commitTooltip?: string;
   canPush: boolean;
   message: CommitComposerMessage;
   onCommitMessageChange: (message: string) => void;
@@ -27,6 +28,7 @@ export function CommitComposer({
   isPushing,
   isGeneratingMessage,
   commitDisabled,
+  commitTooltip,
   canPush,
   message,
   onCommitMessageChange,
@@ -38,7 +40,23 @@ export function CommitComposer({
 
   return (
     <section className="commit-composer" aria-label="Commit composer">
-      <p className="commit-composer-repo">{repoName} / {branch ?? "detached"}</p>
+      <div className="commit-composer-meta">
+        <p className="commit-composer-repo">{repoName}</p>
+        <p className="commit-composer-branch">
+          <svg
+            className="commit-composer-branch-icon"
+            viewBox="0 0 16 16"
+            role="presentation"
+            aria-hidden="true"
+          >
+            <path
+              d="M6.5 3.25a2.25 2.25 0 1 1 1.5 2.122V7.5c0 .966.784 1.75 1.75 1.75h1.378a2.25 2.25 0 1 1 0 1.5H9.75A3.25 3.25 0 0 1 6.5 7.5V5.372A2.251 2.251 0 0 1 6.5 3.25Zm-.75 0a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Zm7 7.5a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Z"
+              fill="currentColor"
+            />
+          </svg>
+          <span>{branch ?? "detached"}</span>
+        </p>
+      </div>
 
       <div className="commit-composer-input-shell">
         <textarea
@@ -46,13 +64,13 @@ export function CommitComposer({
           rows={3}
           value={commitMessage}
           onChange={(event) => onCommitMessageChange(event.target.value)}
-          placeholder="describe why this change exists"
+          placeholder="enter commit message here"
         />
         <button
           type="button"
           className="commit-composer-generate"
-          title="Generate commit message (Codex 5.3 spark)"
-          aria-label="Generate commit message (Codex 5.3 spark)"
+          title="Generate commit message"
+          aria-label="Generate commit message"
           disabled={isGeneratingMessage || isCommitting || isPushing}
           onClick={onGenerateMessage}
         >
@@ -82,6 +100,7 @@ export function CommitComposer({
         <button
           className="hud-button"
           type="button"
+          title={commitTooltip}
           disabled={commitDisabled}
           onClick={() => onCommit(commitMessage)}
         >

@@ -5,7 +5,6 @@ type TopbarProps = {
   onRefresh: () => void;
   onOpenSettings: () => void;
   onPickWorkspace: () => void;
-  quizGateEnabled: boolean;
 };
 
 export function Topbar({
@@ -13,7 +12,6 @@ export function Topbar({
   onRefresh,
   onOpenSettings,
   onPickWorkspace,
-  quizGateEnabled,
 }: TopbarProps) {
   return (
     <header className="topbar">
@@ -24,12 +22,7 @@ export function Topbar({
         </button>
       </div>
 
-      <div className="topbar-center">
-        {repo.mode === "git" ? <span className="chip">branch:{repo.branch ?? "detached"}</span> : null}
-      </div>
-
       <div className="topbar-right">
-        <span className="chip">quiz gate:{quizGateEnabled ? "on" : "off"}</span>
         <button className="hud-button" type="button" onClick={onRefresh}>
           refresh
         </button>

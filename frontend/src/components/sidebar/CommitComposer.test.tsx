@@ -33,8 +33,10 @@ describe("CommitComposer", () => {
   it("renders repo/branch header and three-line editor", () => {
     renderComposer();
 
-    expect(screen.getByText("diffx-webapp / main")).toBeInTheDocument();
-    expect(screen.getByPlaceholderText("describe why this change exists")).toHaveAttribute("rows", "3");
+    expect(screen.getByText("diffx-webapp")).toBeInTheDocument();
+    expect(screen.getByText("main")).toBeInTheDocument();
+    expect(document.querySelector(".commit-composer-branch-icon")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("enter commit message here")).toHaveAttribute("rows", "3");
   });
 
   it("keeps push disabled until commit flow enables it", () => {
@@ -56,7 +58,7 @@ describe("CommitComposer", () => {
     });
 
     const generateButton = screen.getByRole("button", {
-      name: "Generate commit message (Codex 5.3 spark)",
+      name: "Generate commit message",
     });
     expect(generateButton.querySelector("svg")).toBeInTheDocument();
 
@@ -72,8 +74,54 @@ describe("CommitComposer", () => {
   it("shows loading text while generation is pending", () => {
     renderComposer({ isGeneratingMessage: true });
 
-    expect(screen.getByRole("button", { name: "Generate commit message (Codex 5.3 spark)" })).toHaveTextContent(
+    expect(screen.getByRole("button", { name: "Generate commit message" })).toHaveTextContent(
       "..."
     );
+  });
+
+  it("shows commit tooltip only when provided", () => {
+    const { rerender } = render(
+      <CommitComposer
+        repoName="diffx-webapp"
+        branch="main"
+        commitMessage=""
+        isCommitting={false}
+        isPushing={false}
+        isGeneratingMessage={false}
+        commitDisabled={false}
+        commitTooltip="Complete quiz validation before commit."
+        canPush={false}
+        message={null}
+        onCommitMessageChange={() => undefined}
+        onCommit={() => undefined}
+        onPush={() => undefined}
+        onGenerateMessage={() => undefined}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: "commit" })).toHaveAttribute(
+      "title",
+      "Complete quiz validation before commit."
+    );
+
+    rerender(
+      <CommitComposer
+        repoName="diffx-webapp"
+        branch="main"
+        commitMessage=""
+        isCommitting={false}
+        isPushing={false}
+        isGeneratingMessage={false}
+        commitDisabled={false}
+        canPush={false}
+        message={null}
+        onCommitMessageChange={() => undefined}
+        onCommit={() => undefined}
+        onPush={() => undefined}
+        onGenerateMessage={() => undefined}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: "commit" })).not.toHaveAttribute("title");
   });
 });

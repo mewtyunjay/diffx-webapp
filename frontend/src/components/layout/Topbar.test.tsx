@@ -24,12 +24,25 @@ describe("Topbar", () => {
         onRefresh={() => undefined}
         onOpenSettings={() => undefined}
         onPickWorkspace={onPickWorkspace}
-        quizGateEnabled={false}
       />,
     );
 
     fireEvent.click(screen.getByRole("button", { name: "diffx-webapp" }));
 
     expect(onPickWorkspace).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not render branch or quiz gate chips", () => {
+    render(
+      <Topbar
+        repo={REPO}
+        onRefresh={() => undefined}
+        onOpenSettings={() => undefined}
+        onPickWorkspace={() => undefined}
+      />,
+    );
+
+    expect(screen.queryByText(/^branch:/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^quiz gate:/i)).not.toBeInTheDocument();
   });
 });
