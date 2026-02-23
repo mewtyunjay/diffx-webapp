@@ -16,7 +16,11 @@ import {
 } from "./git-client.js";
 import { getChangedFiles } from "./files.service.js";
 import { resolveRepoPath } from "./path.service.js";
-import { requireGitContext } from "./repo-context.service.js";
+import {
+  invalidateRepoContextCache,
+  requireGitContext,
+} from "./repo-context.service.js";
+import { invalidateStatusEntriesCache } from "./status.service.js";
 
 let mutationQueue: Promise<void> = Promise.resolve();
 
@@ -51,6 +55,11 @@ function resolveUniqueRelativePaths(repoRoot: string, requestedPaths: string[]):
   }
 
   return [...uniquePaths];
+}
+
+function invalidateGitDerivedCaches(): void {
+  invalidateRepoContextCache();
+  invalidateStatusEntriesCache();
 }
 
 const execFileAsync = promisify(execFile);
@@ -456,6 +465,7 @@ export async function stageFile(requestedPath: string): Promise<ActionResponse> 
   return await withMutationQueue(async () => {
     try {
       await execGit(["-C", context.repoRoot, "add", "--", resolvedPath.relativePath]);
+      invalidateGitDerivedCaches();
       return {
         ok: true,
         message: `Staged ${resolvedPath.relativePath}`,
@@ -477,6 +487,7 @@ export async function stageManyFiles(requestedPaths: string[]): Promise<ActionRe
   return await withMutationQueue(async () => {
     try {
       await execGit(["-C", context.repoRoot, "add", "--", ...relativePaths]);
+      invalidateGitDerivedCaches();
       const fileLabel = relativePaths.length === 1 ? "file" : "files";
 
       return {
@@ -522,6 +533,8 @@ export async function unstageFile(requestedPath: string): Promise<ActionResponse
       }
     }
 
+    invalidateGitDerivedCaches();
+
     return {
       ok: true,
       message: `Unstaged ${resolvedPath.relativePath}`,
@@ -566,6 +579,8 @@ export async function unstageManyFiles(requestedPaths: string[]): Promise<Action
       }
     }
 
+    invalidateGitDerivedCaches();
+
     const fileLabel = relativePaths.length === 1 ? "file" : "files";
 
     return {
@@ -607,6 +622,8 @@ export async function commitChanges(messageInput: string): Promise<ActionRespons
         exitCode: result.exitCode,
       });
     }
+
+    invalidateGitDerivedCaches();
 
     const firstLine = result.stdout
       .split(/\r?\n/)
@@ -710,6 +727,7 @@ export async function pushChanges(request: PushRequest = {}): Promise<ActionResp
       }
 
       const result = await execGit(pushArgs);
+      invalidateGitDerivedCaches();
       const line = firstGitOutputLine(result);
 
       return {

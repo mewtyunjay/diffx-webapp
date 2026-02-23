@@ -2,11 +2,6 @@ import type { ChangedFile } from "@diffx/contracts";
 import { CommitComposer } from "./CommitComposer";
 import { FilesTab } from "./tabs/FilesTab";
 
-type CommitComposerMessage = {
-  tone: "info" | "error";
-  text: string;
-} | null;
-
 type SidebarShellProps = {
   branch: string | null;
   files: ChangedFile[];
@@ -22,7 +17,6 @@ type SidebarShellProps = {
   commitDisabled: boolean;
   commitTooltip?: string;
   canPush: boolean;
-  commitMessageStatus: CommitComposerMessage;
   onCommitMessageChange: (message: string) => void;
   onRetryFiles: () => void;
   onSelectFile: (file: ChangedFile) => void;
@@ -50,7 +44,6 @@ export function SidebarShell({
   commitDisabled,
   commitTooltip,
   canPush,
-  commitMessageStatus,
   onCommitMessageChange,
   onRetryFiles,
   onSelectFile,
@@ -99,7 +92,6 @@ export function SidebarShell({
         commitDisabled={commitDisabled}
         commitTooltip={commitTooltip}
         canPush={canPush}
-        message={commitMessageStatus}
         onCommitMessageChange={onCommitMessageChange}
         onCommit={onCommitChanges}
         onPush={onPushChanges}

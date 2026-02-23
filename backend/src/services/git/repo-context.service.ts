@@ -18,6 +18,14 @@ type NonGitContext = {
 };
 
 type RepoContext = GitRepoContext | NonGitContext;
+type RepoContextCacheEntry = {
+  value: RepoContext;
+  expiresAt: number;
+};
+
+const REPO_CONTEXT_CACHE_TTL_MS = 150;
+const repoContextCache = new Map<string, RepoContextCacheEntry>();
+const inFlightRepoContextRequests = new Map<string, Promise<RepoContext>>();
 
 function toRepoName(repoRoot: string): string {
   const normalized = repoRoot.replace(/[\\/]+$/, "");
@@ -30,9 +38,7 @@ function isNotGitRepositoryError(error: GitCommandError): boolean {
   return text.includes("not a git repository");
 }
 
-export async function getRepoContext(): Promise<RepoContext> {
-  const candidateRoot = getWorkspaceState().repoRoot;
-
+async function loadRepoContext(candidateRoot: string): Promise<RepoContext> {
   let repoRoot = candidateRoot;
 
   try {
@@ -68,6 +74,47 @@ export async function getRepoContext(): Promise<RepoContext> {
   } catch (error) {
     throw toGitApiError(error, "Unable to inspect repository branch.");
   }
+}
+
+export function invalidateRepoContextCache(candidateRoot?: string): void {
+  if (typeof candidateRoot === "string" && candidateRoot.length > 0) {
+    repoContextCache.delete(candidateRoot);
+    inFlightRepoContextRequests.delete(candidateRoot);
+    return;
+  }
+
+  repoContextCache.clear();
+  inFlightRepoContextRequests.clear();
+}
+
+export async function getRepoContext(): Promise<RepoContext> {
+  const candidateRoot = getWorkspaceState().repoRoot;
+  const now = Date.now();
+  const cached = repoContextCache.get(candidateRoot);
+
+  if (cached && cached.expiresAt > now) {
+    return cached.value;
+  }
+
+  const inFlight = inFlightRepoContextRequests.get(candidateRoot);
+  if (inFlight) {
+    return await inFlight;
+  }
+
+  const pendingRequest = loadRepoContext(candidateRoot)
+    .then((value) => {
+      repoContextCache.set(candidateRoot, {
+        value,
+        expiresAt: Date.now() + REPO_CONTEXT_CACHE_TTL_MS,
+      });
+      return value;
+    })
+    .finally(() => {
+      inFlightRepoContextRequests.delete(candidateRoot);
+    });
+
+  inFlightRepoContextRequests.set(candidateRoot, pendingRequest);
+  return await pendingRequest;
 }
 
 export async function requireGitContext(): Promise<GitRepoContext> {

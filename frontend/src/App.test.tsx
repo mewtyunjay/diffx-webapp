@@ -2,7 +2,7 @@ import React from "react";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ActionResponse } from "@diffx/contracts";
+import type { ActionResponse, DiffDetailResponse } from "@diffx/contracts";
 import App from "./App";
 import {
   commitChanges,
@@ -14,7 +14,7 @@ import {
   unstageManyFiles,
 } from "./services/api/actions";
 import { ApiRequestError } from "./services/api/client";
-import { getDiffDetail } from "./services/api/diff";
+import { getDiffSummary, getFileContents } from "./services/api/diff";
 import { getChangedFiles } from "./services/api/files";
 import { getHealth } from "./services/api/health";
 import {
@@ -38,7 +38,8 @@ vi.mock("./services/api/files", () => ({
 }));
 
 vi.mock("./services/api/diff", () => ({
-  getDiffDetail: vi.fn(),
+  getDiffSummary: vi.fn(),
+  getFileContents: vi.fn(),
 }));
 
 vi.mock("./services/api/health", () => ({
@@ -90,7 +91,8 @@ function createDeferred<T>() {
 describe("App", () => {
   const getRepoSummaryMock = vi.mocked(getRepoSummary);
   const getChangedFilesMock = vi.mocked(getChangedFiles);
-  const getDiffDetailMock = vi.mocked(getDiffDetail);
+  const getDiffSummaryMock = vi.mocked(getDiffSummary);
+  const getFileContentsMock = vi.mocked(getFileContents);
   const getHealthMock = vi.mocked(getHealth);
   const getSettingsMock = vi.mocked(getSettings);
   const putSettingsMock = vi.mocked(putSettings);
@@ -110,6 +112,37 @@ describe("App", () => {
   const getWorkspaceMock = vi.mocked(getWorkspace);
   const setWorkspaceMock = vi.mocked(setWorkspace);
   const pickWorkspaceMock = vi.mocked(pickWorkspace);
+
+  function mockDiffDetail(detail: DiffDetailResponse) {
+    getDiffSummaryMock.mockResolvedValue({
+      mode: detail.mode,
+      file: detail.file,
+    });
+
+    getFileContentsMock.mockImplementation(async (query) => {
+      if (detail.mode === "non-git") {
+        return {
+          mode: "non-git",
+          side: query.side,
+          file: null,
+          isBinary: false,
+          tooLarge: false,
+          languageHint: null,
+        };
+      }
+
+      const side = query.side === "old" ? detail.old : detail.new;
+
+      return {
+        mode: "git",
+        side: query.side,
+        file: side.file,
+        isBinary: side.isBinary,
+        tooLarge: side.tooLarge,
+        languageHint: detail.file?.languageHint ?? null,
+      };
+    });
+  }
 
   function buildGitRepoSummary(overrides: Partial<Awaited<ReturnType<typeof getRepoSummary>>> = {}) {
     return {
@@ -267,7 +300,8 @@ describe("App", () => {
     setWorkspaceMock.mockResolvedValue(buildWorkspaceState());
     pickWorkspaceMock.mockResolvedValue(buildWorkspaceState());
 
-    getDiffDetailMock.mockResolvedValue({
+    mockDiffDetail(
+      {
       mode: "git",
       file: {
         path: "backend/src/app.ts",
@@ -310,7 +344,8 @@ describe("App", () => {
         tooLarge: false,
         error: false,
       },
-    });
+    },
+    );
   });
 
   afterEach(() => {
@@ -435,7 +470,8 @@ describe("App", () => {
       },
     ]);
 
-    getDiffDetailMock.mockResolvedValue({
+    mockDiffDetail(
+      {
       mode: "git",
       file: {
         path: "frontend/src/new-file.ts",
@@ -477,7 +513,8 @@ describe("App", () => {
         tooLarge: false,
         error: false,
       },
-    });
+    },
+    );
 
     getHealthMock.mockResolvedValue({ ok: true });
 
@@ -510,18 +547,18 @@ describe("App", () => {
     getHealthMock.mockResolvedValue({ ok: true });
 
     const deferred = createDeferred<ActionResponse>();
-    const deferredDiffDetail = createDeferred<Awaited<ReturnType<typeof getDiffDetail>>>();
+    const deferredDiffSummary = createDeferred<Awaited<ReturnType<typeof getDiffSummary>>>();
     stageFileMock.mockReturnValueOnce(deferred.promise);
 
     renderWithQueryClient();
 
     const stageButton = await screen.findByRole("button", { name: "stage backend/src/app.ts" });
     await waitFor(() => {
-      expect(getDiffDetailMock).toHaveBeenCalled();
+      expect(getDiffSummaryMock).toHaveBeenCalled();
       expect(screen.queryByText("Loading diff...")).not.toBeInTheDocument();
     });
 
-    getDiffDetailMock.mockImplementationOnce(async () => await deferredDiffDetail.promise);
+    getDiffSummaryMock.mockImplementationOnce(async () => await deferredDiffSummary.promise);
     fireEvent.click(stageButton);
 
     await waitFor(() => {
@@ -540,7 +577,7 @@ describe("App", () => {
     expect(screen.queryByText("Loading diff...")).not.toBeInTheDocument();
 
     deferred.resolve({ ok: true, message: "Staged backend/src/app.ts" });
-    deferredDiffDetail.resolve({
+    deferredDiffSummary.resolve({
       mode: "git",
       file: {
         path: "backend/src/app.ts",
@@ -564,24 +601,6 @@ describe("App", () => {
           deletions: 1,
           hunks: 1,
         },
-      },
-      old: {
-        file: {
-          name: "backend/src/app.ts",
-          contents: "const app = oldValue",
-        },
-        isBinary: false,
-        tooLarge: false,
-        error: false,
-      },
-      new: {
-        file: {
-          name: "backend/src/app.ts",
-          contents: "const app = newValue",
-        },
-        isBinary: false,
-        tooLarge: false,
-        error: false,
       },
     });
 
@@ -665,7 +684,8 @@ describe("App", () => {
       { path: "frontend/src/App.tsx", status: "staged", contentHash: "hash-frontend-app" },
     ]);
 
-    getDiffDetailMock.mockResolvedValue({
+    mockDiffDetail(
+      {
       mode: "git",
       file: {
         path: "frontend/src/App.tsx",
@@ -679,7 +699,8 @@ describe("App", () => {
       },
       old: { file: { name: "frontend/src/App.tsx", contents: "" }, isBinary: false, tooLarge: false, error: false },
       new: { file: { name: "frontend/src/App.tsx", contents: "" }, isBinary: false, tooLarge: false, error: false },
-    });
+    },
+    );
 
     getHealthMock.mockResolvedValue({ ok: true });
 
@@ -726,7 +747,7 @@ describe("App", () => {
     expect(screen.queryByText("Generated commit message with Codex 5.3 spark.")).not.toBeInTheDocument();
   });
 
-  it("auto-dismisses commit generator error after 2 seconds", async () => {
+  it("shows commit generator error in status bar and auto-dismisses after 3 seconds", async () => {
     getRepoSummaryMock.mockResolvedValue(buildGitRepoSummary({ stagedCount: 0 }));
     getChangedFilesMock.mockResolvedValue([]);
     getHealthMock.mockResolvedValue({ ok: true });
@@ -747,6 +768,7 @@ describe("App", () => {
       "Stage at least one file before generating a commit message.",
     );
     expect(errorMessage).toBeInTheDocument();
+    expect(errorMessage.closest(".statusbar-left")).toContainElement(screen.getByText("connected"));
 
     await waitFor(
       () => {
@@ -754,7 +776,7 @@ describe("App", () => {
           screen.queryByText("Stage at least one file before generating a commit message."),
         ).not.toBeInTheDocument();
       },
-      { timeout: 3000 },
+      { timeout: 4000 },
     );
   });
 
@@ -767,7 +789,8 @@ describe("App", () => {
       { path: "frontend/src/App.tsx", status: "staged", contentHash: "hash-frontend-app" },
     ]);
 
-    getDiffDetailMock.mockResolvedValue({
+    mockDiffDetail(
+      {
       mode: "git",
       file: {
         path: "frontend/src/App.tsx",
@@ -781,7 +804,8 @@ describe("App", () => {
       },
       old: { file: { name: "frontend/src/App.tsx", contents: "" }, isBinary: false, tooLarge: false, error: false },
       new: { file: { name: "frontend/src/App.tsx", contents: "" }, isBinary: false, tooLarge: false, error: false },
-    });
+    },
+    );
 
     getHealthMock.mockResolvedValue({ ok: true });
 
@@ -870,7 +894,8 @@ describe("App", () => {
       { path: "frontend/src/App.tsx", status: "staged", contentHash: "hash-frontend-app" },
     ]);
 
-    getDiffDetailMock.mockResolvedValue({
+    mockDiffDetail(
+      {
       mode: "git",
       file: {
         path: "frontend/src/App.tsx",
@@ -884,7 +909,8 @@ describe("App", () => {
       },
       old: { file: { name: "frontend/src/App.tsx", contents: "" }, isBinary: false, tooLarge: false, error: false },
       new: { file: { name: "frontend/src/App.tsx", contents: "" }, isBinary: false, tooLarge: false, error: false },
-    });
+    },
+    );
 
     getHealthMock.mockResolvedValue({ ok: true });
 
@@ -932,5 +958,72 @@ describe("App", () => {
     await waitFor(() => {
       expect(commitChangesMock).toHaveBeenCalledWith({ message: "ship files dock" });
     });
+  });
+
+  it("clears validated quiz state back to prestart in place", async () => {
+    getRepoSummaryMock.mockResolvedValue(buildGitRepoSummary({ stagedCount: 1 }));
+    getSettingsMock.mockResolvedValue({
+      quiz: {
+        gateEnabled: true,
+        questionCount: 4,
+        scope: "staged",
+        validationMode: "answer_all",
+        scoreThreshold: null,
+        providerPreference: "codex",
+      },
+    });
+
+    getChangedFilesMock.mockResolvedValue([
+      { path: "frontend/src/App.tsx", status: "staged", contentHash: "hash-frontend-app" },
+    ]);
+
+    mockDiffDetail(
+      {
+      mode: "git",
+      file: {
+        path: "frontend/src/App.tsx",
+        oldPath: "frontend/src/App.tsx",
+        newPath: "frontend/src/App.tsx",
+        languageHint: "tsx",
+        isBinary: false,
+        tooLarge: false,
+        patch: "",
+        stats: { additions: 0, deletions: 0, hunks: 0 },
+      },
+      old: { file: { name: "frontend/src/App.tsx", contents: "" }, isBinary: false, tooLarge: false, error: false },
+      new: { file: { name: "frontend/src/App.tsx", contents: "" }, isBinary: false, tooLarge: false, error: false },
+    },
+    );
+
+    getHealthMock.mockResolvedValue({ ok: true });
+    createQuizSessionMock.mockResolvedValue(buildQuizSession("queued"));
+    getQuizSessionMock.mockResolvedValue(buildQuizSession("ready"));
+    validateQuizSessionMock.mockResolvedValue(buildQuizSession("validated"));
+
+    renderWithQueryClient();
+
+    const messageBox = await screen.findByPlaceholderText("enter commit message here");
+    fireEvent.change(messageBox, { target: { value: "ship files dock" } });
+    fireEvent.click(screen.getByRole("button", { name: "commit" }));
+    fireEvent.click(screen.getByRole("button", { name: "generate quiz" }));
+
+    await screen.findByText("Question 1");
+    fireEvent.click(screen.getByRole("button", { name: "validate quiz" }));
+
+    await waitFor(() => {
+      expect(validateQuizSessionMock).toHaveBeenCalledWith("quiz-session-1", {
+        sourceFingerprint: "source-fingerprint",
+      });
+    });
+
+    const passed = await screen.findByText("passed - score 4/4");
+    const footer = passed.closest(".quiz-footer-row");
+    expect(footer).toContainElement(screen.getByRole("button", { name: "clear quiz" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "clear quiz" }));
+
+    expect(await screen.findByRole("button", { name: "generate quiz" })).toBeInTheDocument();
+    expect(screen.queryByText("Question 1")).not.toBeInTheDocument();
+    expect(screen.queryByText("passed - score 4/4")).not.toBeInTheDocument();
   });
 });

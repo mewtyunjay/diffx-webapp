@@ -8,6 +8,7 @@ import type {
   DiffScope,
   DiffSummaryResponse,
   DiffViewMode,
+  FileContentsResponse,
   QuizSession,
   QuizSseEvent,
   RepoSummary,
@@ -23,7 +24,7 @@ import {
   unstageManyFiles,
 } from "../../services/api/actions";
 import { ApiRequestError } from "../../services/api/client";
-import { getDiffDetail } from "../../services/api/diff";
+import { getDiffSummary, getFileContents } from "../../services/api/diff";
 import { toUiError } from "../../services/api/error-ui";
 import { getChangedFiles } from "../../services/api/files";
 import { getHealth } from "../../services/api/health";
@@ -58,7 +59,7 @@ type FilesDockMessage = {
   tone: "info" | "error";
   text: string;
 } | null;
-const FILES_DOCK_ERROR_AUTO_CLEAR_MS = 2_000;
+const FILES_DOCK_MESSAGE_AUTO_CLEAR_MS = 3_000;
 type SelectedFileRef = {
   path: string;
   status: ChangedFileStatus;
@@ -246,6 +247,51 @@ function copyDiffDetailCache(source: DiffDetailResponse | undefined): DiffDetail
   };
 }
 
+const EMPTY_DETAIL_SIDE: DiffDetailResponse["old"] = {
+  file: null,
+  isBinary: false,
+  tooLarge: false,
+  error: false,
+};
+
+function mapFileContentsToDetailSide(
+  result: PromiseSettledResult<FileContentsResponse>,
+): DiffDetailResponse["old"] {
+  if (result.status !== "fulfilled") {
+    return {
+      file: null,
+      isBinary: false,
+      tooLarge: false,
+      error: true,
+    };
+  }
+
+  return {
+    file: result.value.file,
+    isBinary: result.value.isBinary,
+    tooLarge: result.value.tooLarge,
+    error: false,
+  };
+}
+
+function toPatchOnlyDiffDetail(summary: DiffSummaryResponse): DiffDetailResponse {
+  if (summary.mode === "non-git") {
+    return {
+      mode: "non-git",
+      file: null,
+      old: EMPTY_DETAIL_SIDE,
+      new: EMPTY_DETAIL_SIDE,
+    };
+  }
+
+  return {
+    mode: "git",
+    file: summary.file,
+    old: EMPTY_DETAIL_SIDE,
+    new: EMPTY_DETAIL_SIDE,
+  };
+}
+
 function toScope(file: ChangedFile | null): DiffScope | null {
   if (!file) return null;
   return file.status === "staged" ? "staged" : "unstaged";
@@ -283,19 +329,13 @@ export function AppShell({ initialRepo }: AppShellProps) {
   const [quizUnlockSignature, setQuizUnlockSignature] = useState<string | null>(null);
 
   useEffect(() => {
-    if (filesDockMessage?.tone !== "error") {
+    if (!filesDockMessage) {
       return;
     }
 
     const timeoutId = window.setTimeout(() => {
-      setFilesDockMessage((current) => {
-        if (current?.tone !== "error") {
-          return current;
-        }
-
-        return null;
-      });
-    }, FILES_DOCK_ERROR_AUTO_CLEAR_MS);
+      setFilesDockMessage(null);
+    }, FILES_DOCK_MESSAGE_AUTO_CLEAR_MS);
 
     return () => {
       window.clearTimeout(timeoutId);
@@ -420,7 +460,7 @@ export function AppShell({ initialRepo }: AppShellProps) {
     placeholderData: (previousData) => previousData,
   });
 
-  const quizSession = quizSessionQuery.data ?? null;
+  const quizSession = activeQuizSessionId ? (quizSessionQuery.data ?? null) : null;
 
   const selectedFile = useMemo(() => {
     if (!selectedFileRef) {
@@ -496,21 +536,79 @@ export function AppShell({ initialRepo }: AppShellProps) {
   }, [bypassArmed, localFileSignature, quizSessionLocalSignature]);
 
   const selectedScope = useMemo(() => toScope(selectedFile), [selectedFile]);
+  const selectedDiffDetailQueryKey =
+    selectedFile && selectedScope
+      ? queryKeys.diffDetail(selectedFile.path, selectedScope, 3, selectedFile.contentHash)
+      : (["diffDetail", "none"] as const);
 
   const diffDetailQuery = useQuery({
-    queryKey:
-      selectedFile && selectedScope
-        ? queryKeys.diffDetail(selectedFile.path, selectedScope, 3, selectedFile.contentHash)
-        : ["diffDetail", "none"],
-    queryFn: async ({ signal }) =>
-      await getDiffDetail(
+    queryKey: selectedDiffDetailQueryKey,
+    queryFn: async ({ signal, queryKey }) => {
+      const selectedPath = selectedFile!.path;
+      const scope = selectedScope!;
+      const summary = await getDiffSummary(
         {
-          path: selectedFile!.path,
-          scope: selectedScope!,
+          path: selectedPath,
+          scope,
           contextLines: 3,
         },
         { signal },
-      ),
+      );
+      const patchOnlyDetail = toPatchOnlyDiffDetail(summary);
+
+      if (
+        summary.mode !== "git" ||
+        !summary.file ||
+        summary.file.isBinary ||
+        summary.file.tooLarge ||
+        !summary.file.patch
+      ) {
+        return patchOnlyDetail;
+      }
+
+      const oldPath = summary.file.oldPath ?? selectedPath;
+      const newPath = summary.file.newPath ?? selectedPath;
+      const currentQueryKey = queryKey;
+
+      void Promise.allSettled([
+        getFileContents(
+          {
+            path: oldPath,
+            scope,
+            side: "old",
+          },
+          { signal },
+        ),
+        getFileContents(
+          {
+            path: newPath,
+            scope,
+            side: "new",
+          },
+          { signal },
+        ),
+      ]).then(([oldResult, newResult]) => {
+        if (signal.aborted) {
+          return;
+        }
+
+        queryClient.setQueryData<DiffDetailResponse>(currentQueryKey, (cached) => {
+          const base = cached ?? patchOnlyDetail;
+
+          if (base.mode !== "git") {
+            return base;
+          }
+
+          return {
+            ...base,
+            old: mapFileContentsToDetailSide(oldResult),
+            new: mapFileContentsToDetailSide(newResult),
+          };
+        });
+      });
+
+      return patchOnlyDetail;
+    },
     enabled: Boolean(selectedFile && selectedScope),
     placeholderData: (previousData) => previousData,
   });
@@ -1423,7 +1521,6 @@ export function AppShell({ initialRepo }: AppShellProps) {
           commitDisabled={commitActionDisabled}
           commitTooltip={commitTooltip}
           canPush={filesDockMode === "push"}
-          commitMessageStatus={filesDockMessage}
           onCommitMessageChange={(message) => {
             setCommitMessageDraft(message);
           }}
@@ -1481,6 +1578,7 @@ export function AppShell({ initialRepo }: AppShellProps) {
         stagedCount={repo.stagedCount}
         unstagedCount={repo.unstagedCount}
         untrackedCount={repo.untrackedCount}
+        message={filesDockMessage}
       />
     </div>
   );

@@ -187,6 +187,12 @@ describe("QuizPanel", () => {
 
     expect(screen.getByRole("button", { name: /Alpha/i })).toHaveClass("quiz-option-button-correct");
     expect(screen.getByRole("button", { name: /Beta/i })).toHaveClass("quiz-option-button-incorrect");
-    expect(screen.getByText("not passed - score 0/1")).toBeInTheDocument();
+
+    const result = screen.getByText("not passed - score 0/1");
+    const footer = result.closest(".quiz-footer-row");
+
+    expect(footer).toContainElement(screen.getByRole("button", { name: "clear quiz" }));
+    expect(result).toHaveClass("quiz-footer-result");
+    expect(screen.queryByText("quiz score")).not.toBeInTheDocument();
   });
 });

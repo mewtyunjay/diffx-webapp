@@ -1,8 +1,3 @@
-type CommitComposerMessage = {
-  tone: "info" | "error";
-  text: string;
-} | null;
-
 type CommitComposerProps = {
   branch: string | null;
   commitMessage: string;
@@ -12,7 +7,6 @@ type CommitComposerProps = {
   commitDisabled: boolean;
   commitTooltip?: string;
   canPush: boolean;
-  message: CommitComposerMessage;
   onCommitMessageChange: (message: string) => void;
   onCommit: (message: string) => void;
   onPush: () => void;
@@ -28,7 +22,6 @@ export function CommitComposer({
   commitDisabled,
   commitTooltip,
   canPush,
-  message,
   onCommitMessageChange,
   onCommit,
   onPush,
@@ -112,10 +105,6 @@ export function CommitComposer({
           {isPushing ? "pushing..." : "push"}
         </button>
       </div>
-
-      {message?.text ? (
-        <p className={message.tone === "error" ? "error-note" : "inline-note"}>{message.text}</p>
-      ) : null}
     </section>
   );
 }

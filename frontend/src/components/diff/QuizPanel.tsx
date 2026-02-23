@@ -546,34 +546,33 @@ export function QuizPanel({
         })}
       </div>
 
-      <div className="quiz-actions-row">
-        <button
-          className="hud-button"
-          type="button"
-          disabled={!allAnswered || isSubmittingAnswers || isValidating}
-          onClick={onValidateQuiz}
-        >
-          {isValidating ? "validating..." : "validate quiz"}
-        </button>
-        <button className="hud-button" type="button" onClick={onClearQuiz}>
-          clear quiz
-        </button>
-      </div>
+      <div className="quiz-footer-row" role="status" aria-live="polite">
+        <div className="quiz-actions-row">
+          <button
+            className="hud-button"
+            type="button"
+            disabled={!allAnswered || isSubmittingAnswers || isValidating}
+            onClick={onValidateQuiz}
+          >
+            {isValidating ? "validating..." : "validate quiz"}
+          </button>
+          <button className="hud-button" type="button" onClick={onClearQuiz}>
+            clear quiz
+          </button>
+        </div>
 
-      <div className="quiz-score-footer" role="status" aria-live="polite">
-        <p className="hud-label">quiz score</p>
         {resultSummary ? (
           <p
             className={
               session.validation?.passed
-                ? "quiz-score-value quiz-score-value-passed"
-                : "quiz-score-value quiz-score-value-failed"
+                ? "quiz-score-value quiz-score-value-passed quiz-footer-result"
+                : "quiz-score-value quiz-score-value-failed quiz-footer-result"
             }
           >
             {resultSummary}
           </p>
         ) : (
-          <p className="inline-note">Validate quiz to see score and option feedback.</p>
+          <p className="inline-note quiz-footer-hint">Validate quiz to see score and option feedback.</p>
         )}
       </div>
     </div>

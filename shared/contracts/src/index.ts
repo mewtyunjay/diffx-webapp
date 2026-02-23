@@ -55,6 +55,9 @@ export type DiffQuery = {
 };
 
 export type DiffDetailQuery = DiffQuery;
+export type FileContentsQuery = DiffQuery & {
+  side: DiffSide;
+};
 
 export type DiffStats = {
   additions: number;

@@ -3,6 +3,10 @@ type StatusBarProps = {
   stagedCount: number;
   unstagedCount: number;
   untrackedCount: number;
+  message: {
+    tone: "info" | "error";
+    text: string;
+  } | null;
 };
 
 export function StatusBar({
@@ -10,6 +14,7 @@ export function StatusBar({
   stagedCount,
   unstagedCount,
   untrackedCount,
+  message,
 }: StatusBarProps) {
   return (
     <footer className="statusbar">
@@ -18,6 +23,15 @@ export function StatusBar({
           <span className={connected ? "status-dot status-dot-ok" : "status-dot status-dot-error"} />
           {connected ? "connected" : "disconnected"}
         </span>
+        {message?.text ? (
+          <span
+            className={message.tone === "error" ? "status-message status-message-error" : "status-message"}
+            role="status"
+            aria-live="polite"
+          >
+            {message.text}
+          </span>
+        ) : null}
       </div>
 
       <div className="statusbar-right">

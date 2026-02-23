@@ -12,7 +12,6 @@ function renderComposer(overrides?: Partial<React.ComponentProps<typeof CommitCo
     isGeneratingMessage: false,
     commitDisabled: false,
     canPush: false,
-    message: null,
     onCommitMessageChange: vi.fn(),
     onCommit: vi.fn(),
     onPush: vi.fn(),
@@ -88,7 +87,6 @@ describe("CommitComposer", () => {
         commitDisabled={false}
         commitTooltip="Complete quiz validation before commit."
         canPush={false}
-        message={null}
         onCommitMessageChange={() => undefined}
         onCommit={() => undefined}
         onPush={() => undefined}
@@ -110,7 +108,6 @@ describe("CommitComposer", () => {
         isGeneratingMessage={false}
         commitDisabled={false}
         canPush={false}
-        message={null}
         onCommitMessageChange={() => undefined}
         onCommit={() => undefined}
         onPush={() => undefined}

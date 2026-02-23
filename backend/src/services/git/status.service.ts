@@ -13,6 +13,15 @@ export type ChangedFileIdentity = {
   status: ChangedFileStatus;
 };
 
+type StatusCacheEntry = {
+  value: GitStatusEntry[];
+  expiresAt: number;
+};
+
+const STATUS_ENTRIES_CACHE_TTL_MS = 150;
+const statusEntriesCache = new Map<string, StatusCacheEntry>();
+const inFlightStatusEntriesRequests = new Map<string, Promise<GitStatusEntry[]>>();
+
 const STATUS_PRIORITY: Record<ChangedFileStatus, number> = {
   staged: 0,
   unstaged: 1,
@@ -80,19 +89,54 @@ function parseStatusEntries(stdout: string): GitStatusEntry[] {
 }
 
 export async function getStatusEntries(repoRoot: string): Promise<GitStatusEntry[]> {
-  try {
-    const result = await execGit([
-      "-C",
-      repoRoot,
-      "status",
-      "--porcelain=v1",
-      "--untracked-files=all",
-    ]);
-
-    return parseStatusEntries(result.stdout);
-  } catch (error) {
-    throw toGitApiError(error, "Unable to inspect Git status.");
+  const now = Date.now();
+  const cached = statusEntriesCache.get(repoRoot);
+  if (cached && cached.expiresAt > now) {
+    return cached.value;
   }
+
+  const inFlight = inFlightStatusEntriesRequests.get(repoRoot);
+  if (inFlight) {
+    return await inFlight;
+  }
+
+  const pendingRequest = (async () => {
+    try {
+      const result = await execGit([
+        "-C",
+        repoRoot,
+        "status",
+        "--porcelain=v1",
+        "--untracked-files=all",
+      ]);
+      const value = parseStatusEntries(result.stdout);
+
+      statusEntriesCache.set(repoRoot, {
+        value,
+        expiresAt: Date.now() + STATUS_ENTRIES_CACHE_TTL_MS,
+      });
+
+      return value;
+    } catch (error) {
+      throw toGitApiError(error, "Unable to inspect Git status.");
+    } finally {
+      inFlightStatusEntriesRequests.delete(repoRoot);
+    }
+  })();
+
+  inFlightStatusEntriesRequests.set(repoRoot, pendingRequest);
+  return await pendingRequest;
+}
+
+export function invalidateStatusEntriesCache(repoRoot?: string): void {
+  if (typeof repoRoot === "string" && repoRoot.length > 0) {
+    statusEntriesCache.delete(repoRoot);
+    inFlightStatusEntriesRequests.delete(repoRoot);
+    return;
+  }
+
+  statusEntriesCache.clear();
+  inFlightStatusEntriesRequests.clear();
 }
 
 export function getStatusEntryMap(entries: GitStatusEntry[]): Map<string, GitStatusEntry> {
