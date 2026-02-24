@@ -14,6 +14,11 @@ import {
   unstageManyFiles,
 } from "./services/api/actions";
 import { ApiRequestError } from "./services/api/client";
+import {
+  createCodeReviewSession,
+  getCodeReviewSession,
+  openCodeReviewSessionStream,
+} from "./services/api/code-review";
 import { getDiffSummary, getFileContents } from "./services/api/diff";
 import { getChangedFiles } from "./services/api/files";
 import { getHealth } from "./services/api/health";
@@ -58,6 +63,12 @@ vi.mock("./services/api/quiz", () => ({
   openQuizSessionStream: vi.fn(() => () => undefined),
   submitQuizAnswers: vi.fn(),
   validateQuizSession: vi.fn(),
+}));
+
+vi.mock("./services/api/code-review", () => ({
+  createCodeReviewSession: vi.fn(),
+  getCodeReviewSession: vi.fn(),
+  openCodeReviewSessionStream: vi.fn(() => () => undefined),
 }));
 
 vi.mock("./services/api/actions", () => ({
@@ -109,6 +120,9 @@ describe("App", () => {
   const commitChangesMock = vi.mocked(commitChanges);
   const generateCommitMessageMock = vi.mocked(generateCommitMessage);
   const pushChangesMock = vi.mocked(pushChanges);
+  const createCodeReviewSessionMock = vi.mocked(createCodeReviewSession);
+  const getCodeReviewSessionMock = vi.mocked(getCodeReviewSession);
+  const openCodeReviewSessionStreamMock = vi.mocked(openCodeReviewSessionStream);
   const getWorkspaceMock = vi.mocked(getWorkspace);
   const setWorkspaceMock = vi.mocked(setWorkspace);
   const pickWorkspaceMock = vi.mocked(pickWorkspace);
@@ -296,6 +310,9 @@ describe("App", () => {
     openQuizSessionStreamMock.mockReturnValue(() => undefined);
     submitQuizAnswersMock.mockReset();
     validateQuizSessionMock.mockReset();
+    createCodeReviewSessionMock.mockReset();
+    getCodeReviewSessionMock.mockReset();
+    openCodeReviewSessionStreamMock.mockReturnValue(() => undefined);
     getWorkspaceMock.mockResolvedValue(buildWorkspaceState());
     setWorkspaceMock.mockResolvedValue(buildWorkspaceState());
     pickWorkspaceMock.mockResolvedValue(buildWorkspaceState());
@@ -422,8 +439,8 @@ describe("App", () => {
     renderWithQueryClient();
 
     expect(await screen.findByRole("button", { name: "diffx-webapp" })).toBeInTheDocument();
-    expect(screen.queryByRole("tab", { name: "Files" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("tab", { name: "Actions" })).not.toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Files" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /Code Review/i })).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "app.ts" })).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "split" })).toBeInTheDocument();
     expect(screen.queryByText(/^branch:/i)).not.toBeInTheDocument();
@@ -529,6 +546,76 @@ describe("App", () => {
     const fileHeader = await screen.findByRole("status", { name: "Current diff file metadata" });
     expect(within(fileHeader).getByText("+3")).toBeInTheDocument();
     expect(within(fileHeader).queryByText("+9")).not.toBeInTheDocument();
+  });
+
+  it("falls back to diff payload stats when file row stats are missing", async () => {
+    getRepoSummaryMock.mockResolvedValue(buildGitRepoSummary({ unstagedCount: 1 }));
+
+    getChangedFilesMock.mockResolvedValue([
+      {
+        path: "frontend/src/no-stats.ts",
+        status: "unstaged",
+        contentHash: "hash-no-stats",
+        stats: null,
+      },
+    ]);
+
+    mockDiffDetail(
+      {
+      mode: "git",
+      file: {
+        path: "frontend/src/no-stats.ts",
+        oldPath: "frontend/src/no-stats.ts",
+        newPath: "frontend/src/no-stats.ts",
+        languageHint: "ts",
+        isBinary: false,
+        tooLarge: false,
+        patch: [
+          "diff --git a/frontend/src/no-stats.ts b/frontend/src/no-stats.ts",
+          "index 1111111..2222222 100644",
+          "--- a/frontend/src/no-stats.ts",
+          "+++ b/frontend/src/no-stats.ts",
+          "@@ -1 +1 @@",
+          "-const a = 1",
+          "+const a = 2",
+          "",
+        ].join("\n"),
+        stats: {
+          additions: 7,
+          deletions: 2,
+          hunks: 1,
+        },
+      },
+      old: {
+        file: {
+          name: "frontend/src/no-stats.ts",
+          contents: "const a = 1",
+        },
+        isBinary: false,
+        tooLarge: false,
+        error: false,
+      },
+      new: {
+        file: {
+          name: "frontend/src/no-stats.ts",
+          contents: "const a = 2",
+        },
+        isBinary: false,
+        tooLarge: false,
+        error: false,
+      },
+    },
+    );
+
+    getHealthMock.mockResolvedValue({ ok: true });
+
+    renderWithQueryClient();
+
+    const fileHeader = await screen.findByRole("status", { name: "Current diff file metadata" });
+    expect(within(fileHeader).getByText("+7")).toBeInTheDocument();
+    expect(within(fileHeader).getByText("-2")).toBeInTheDocument();
+    expect(within(fileHeader).queryByText("+-")).not.toBeInTheDocument();
+    expect(within(fileHeader).queryByText("--")).not.toBeInTheDocument();
   });
 
   it("optimistically flips unstaged file to staged in files tab", async () => {
@@ -646,6 +733,79 @@ describe("App", () => {
     expect(stageFileMock).not.toHaveBeenCalled();
   });
 
+  it("keeps selected diff stable during pending stage-all and stages on first click", async () => {
+    getRepoSummaryMock
+      .mockResolvedValueOnce(buildGitRepoSummary({ unstagedCount: 2 }))
+      .mockResolvedValue(buildGitRepoSummary({ stagedCount: 2 }));
+
+    getChangedFilesMock
+      .mockResolvedValueOnce([
+        {
+          path: "backend/src/app.ts",
+          status: "unstaged",
+          contentHash: "hash-app",
+          stats: null,
+        },
+        {
+          path: "backend/src/server.ts",
+          status: "unstaged",
+          contentHash: "hash-server",
+          stats: { additions: 2, deletions: 0 },
+        },
+      ])
+      .mockResolvedValue([
+        {
+          path: "backend/src/app.ts",
+          status: "staged",
+          contentHash: "hash-app",
+          stats: null,
+        },
+        {
+          path: "backend/src/server.ts",
+          status: "staged",
+          contentHash: "hash-server",
+          stats: { additions: 2, deletions: 0 },
+        },
+      ]);
+
+    getHealthMock.mockResolvedValue({ ok: true });
+    const deferredStageMany = createDeferred<ActionResponse>();
+    stageManyFilesMock.mockReturnValueOnce(deferredStageMany.promise);
+
+    renderWithQueryClient();
+
+    const fileHeader = await screen.findByRole("status", { name: "Current diff file metadata" });
+    expect(within(fileHeader).getByText("+1")).toBeInTheDocument();
+    expect(within(fileHeader).getByText("-1")).toBeInTheDocument();
+
+    const unstagedHeader = await screen.findByText("unstaged (2)");
+    const section = unstagedHeader.closest("section");
+    expect(section).not.toBeNull();
+
+    fireEvent.click(within(section!).getByRole("button", { name: "stage all" }));
+
+    await waitFor(() => {
+      expect(stageManyFilesMock).toHaveBeenCalledTimes(1);
+      expect(stageManyFilesMock).toHaveBeenCalledWith({
+        paths: ["backend/src/app.ts", "backend/src/server.ts"],
+      });
+    });
+
+    const pendingUnstageButton = await screen.findByRole("button", { name: "unstage backend/src/app.ts" });
+    expect(pendingUnstageButton).toBeDisabled();
+    expect(screen.queryByText("No diff available for this selection.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Select a file in the sidebar to view its diff.")).not.toBeInTheDocument();
+    expect(within(screen.getByRole("status", { name: "Current diff file metadata" })).getByText("+1")).toBeInTheDocument();
+    expect(within(screen.getByRole("status", { name: "Current diff file metadata" })).getByText("-1")).toBeInTheDocument();
+
+    deferredStageMany.resolve({ ok: true, message: "Staged 2 files." });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "unstage backend/src/app.ts" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "unstage backend/src/server.ts" })).toBeInTheDocument();
+    });
+  });
+
   it("uses unstage-many endpoint for header unstage all action", async () => {
     getRepoSummaryMock.mockResolvedValue(
       buildGitRepoSummary({ stagedCount: 2 }),
@@ -676,6 +836,9 @@ describe("App", () => {
   });
 
   it("switches files dock action from commit to push after commit", async () => {
+    commitChangesMock.mockResolvedValueOnce({ ok: true, message: "Committed to main (abc123)" });
+    pushChangesMock.mockResolvedValueOnce({ ok: true, message: "Pushed to origin/main" });
+
     getRepoSummaryMock.mockResolvedValue(
       buildGitRepoSummary({ stagedCount: 1 }),
     );
@@ -716,12 +879,52 @@ describe("App", () => {
       expect(commitChangesMock).toHaveBeenCalledWith({ message: "ship files dock" });
     });
 
+    const commitStatus = await screen.findByText("Committed to main (abc123)");
+    expect(commitStatus.closest(".statusbar-left")).toContainElement(screen.getByText("connected"));
+
     const pushButton = await screen.findByRole("button", { name: "push" });
     fireEvent.click(pushButton);
 
     await waitFor(() => {
       expect(pushChangesMock).toHaveBeenCalledWith({});
     });
+
+    const pushStatus = await screen.findByText("Pushed to origin/main");
+    expect(pushStatus.closest(".statusbar-left")).toContainElement(screen.getByText("connected"));
+  });
+
+  it("shows commit success in status bar and auto-dismisses after 3 seconds", async () => {
+    commitChangesMock.mockResolvedValueOnce({ ok: true, message: "Committed to origin/main" });
+
+    getRepoSummaryMock.mockResolvedValue(
+      buildGitRepoSummary({ stagedCount: 1 }),
+    );
+
+    getChangedFilesMock.mockResolvedValue([
+      { path: "frontend/src/App.tsx", status: "staged", contentHash: "hash-frontend-app" },
+    ]);
+
+    getHealthMock.mockResolvedValue({ ok: true });
+
+    renderWithQueryClient();
+
+    const messageBox = await screen.findByPlaceholderText("enter commit message here");
+    fireEvent.change(messageBox, { target: { value: "ship files dock" } });
+    fireEvent.click(screen.getByRole("button", { name: "commit" }));
+
+    await waitFor(() => {
+      expect(commitChangesMock).toHaveBeenCalledWith({ message: "ship files dock" });
+    });
+
+    const successMessage = await screen.findByText("Committed to origin/main");
+    expect(successMessage.closest(".statusbar-left")).toContainElement(screen.getByText("connected"));
+
+    await waitFor(
+      () => {
+        expect(screen.queryByText("Committed to origin/main")).not.toBeInTheDocument();
+      },
+      { timeout: 4000 },
+    );
   });
 
   it("generates commit message suggestion from composer icon", async () => {

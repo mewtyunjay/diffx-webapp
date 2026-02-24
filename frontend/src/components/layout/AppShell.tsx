@@ -3,6 +3,8 @@ import type {
   AppSettings,
   ChangedFile,
   ChangedFileStatus,
+  CodeReviewSession,
+  CodeReviewSseEvent,
   DiffPaneMode,
   DiffDetailResponse,
   DiffScope,
@@ -24,6 +26,11 @@ import {
   unstageManyFiles,
 } from "../../services/api/actions";
 import { ApiRequestError } from "../../services/api/client";
+import {
+  createCodeReviewSession,
+  getCodeReviewSession,
+  openCodeReviewSessionStream,
+} from "../../services/api/code-review";
 import { getDiffSummary, getFileContents } from "../../services/api/diff";
 import { toUiError } from "../../services/api/error-ui";
 import { getChangedFiles } from "../../services/api/files";
@@ -120,17 +127,32 @@ function syncRepoCounts(repo: RepoSummary, files: ChangedFile[]): RepoSummary {
   };
 }
 
-function getFileMeta(files: ChangedFile[], path: string): { contentHash: string; stats: ChangedFile["stats"] } {
-  const match = files.find((file) => file.path === path);
+function getPreferredFileMeta(
+  files: ChangedFile[],
+  path: string,
+  preferredStatuses: ChangedFileStatus[],
+): { contentHash: string; stats: ChangedFile["stats"] } {
+  const matches = files.filter((file) => file.path === path);
+  const preferredMatch = preferredStatuses
+    .map((status) => matches.find((file) => file.status === status))
+    .find((entry) => entry !== undefined);
+  const fallbackMatch = matches[0];
+  const statsSource = preferredMatch?.stats
+    ? preferredMatch
+    : (matches.find((entry) => entry.stats !== null) ?? preferredMatch ?? fallbackMatch);
 
   return {
-    contentHash: match?.contentHash ?? "none",
-    stats: match?.stats ?? null,
+    contentHash: preferredMatch?.contentHash ?? fallbackMatch?.contentHash ?? "none",
+    stats: statsSource?.stats ?? null,
   };
 }
 
 function applyStageTransition(files: ChangedFile[], path: string): ChangedFile[] {
-  const { contentHash, stats } = getFileMeta(files, path);
+  const { contentHash, stats } = getPreferredFileMeta(files, path, [
+    "unstaged",
+    "untracked",
+    "staged",
+  ]);
   const next = files.filter(
     (file) => !(file.path === path && (file.status === "unstaged" || file.status === "untracked")),
   );
@@ -141,7 +163,12 @@ function applyStageTransition(files: ChangedFile[], path: string): ChangedFile[]
 
 function applyStageManyTransition(files: ChangedFile[], paths: string[]): ChangedFile[] {
   const pathSet = new Set(paths);
-  const metaByPath = new Map(paths.map((path) => [path, getFileMeta(files, path)]));
+  const metaByPath = new Map(
+    paths.map((path) => [
+      path,
+      getPreferredFileMeta(files, path, ["unstaged", "untracked", "staged"]),
+    ]),
+  );
   const next = files.filter(
     (file) => !(pathSet.has(file.path) && (file.status === "unstaged" || file.status === "untracked")),
   );
@@ -184,7 +211,11 @@ function applyUnstageTransition(
   path: string,
   targetStatus: ChangedFileStatus,
 ): ChangedFile[] {
-  const { contentHash, stats } = getFileMeta(files, path);
+  const { contentHash, stats } = getPreferredFileMeta(files, path, [
+    "staged",
+    "unstaged",
+    "untracked",
+  ]);
   const next = files.filter((file) => !(file.path === path && file.status === "staged"));
   next.push({ path, status: targetStatus, contentHash, stats });
   return sortChangedFiles(dedupeChangedFiles(next));
@@ -199,7 +230,11 @@ function applyUnstageManyTransition(
   );
 
   for (const [path, status] of targetStatusByPath) {
-    const { contentHash, stats } = getFileMeta(files, path);
+    const { contentHash, stats } = getPreferredFileMeta(files, path, [
+      "staged",
+      "unstaged",
+      "untracked",
+    ]);
     next.push({ path, status, contentHash, stats });
   }
 
@@ -244,6 +279,20 @@ function copyDiffDetailCache(source: DiffDetailResponse | undefined): DiffDetail
       : null,
     old: copySide(source.old),
     new: copySide(source.new),
+  };
+}
+
+function toDiffSummaryFromDetail(source: DiffDetailResponse | undefined): DiffSummaryResponse | undefined {
+  if (!source) return undefined;
+
+  return {
+    mode: source.mode,
+    file: source.file
+      ? {
+          ...source.file,
+          stats: { ...source.file.stats },
+        }
+      : null,
   };
 }
 
@@ -327,6 +376,8 @@ export function AppShell({ initialRepo }: AppShellProps) {
   const [quizStreamError, setQuizStreamError] = useState<string | null>(null);
   const [bypassArmed, setBypassArmed] = useState(false);
   const [quizUnlockSignature, setQuizUnlockSignature] = useState<string | null>(null);
+  const [activeCodeReviewSessionId, setActiveCodeReviewSessionId] = useState<string | null>(null);
+  const [codeReviewStreamError, setCodeReviewStreamError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!filesDockMessage) {
@@ -461,6 +512,17 @@ export function AppShell({ initialRepo }: AppShellProps) {
   });
 
   const quizSession = activeQuizSessionId ? (quizSessionQuery.data ?? null) : null;
+  const codeReviewSessionQuery = useQuery({
+    queryKey: activeCodeReviewSessionId
+      ? queryKeys.codeReviewSession(activeCodeReviewSessionId)
+      : ["codeReviewSession", "none"],
+    queryFn: async () => await getCodeReviewSession(activeCodeReviewSessionId!),
+    enabled: Boolean(activeCodeReviewSessionId),
+    placeholderData: (previousData) => previousData,
+  });
+  const codeReviewSession = activeCodeReviewSessionId
+    ? (codeReviewSessionQuery.data ?? null)
+    : null;
 
   const selectedFile = useMemo(() => {
     if (!selectedFileRef) {
@@ -536,6 +598,9 @@ export function AppShell({ initialRepo }: AppShellProps) {
   }, [bypassArmed, localFileSignature, quizSessionLocalSignature]);
 
   const selectedScope = useMemo(() => toScope(selectedFile), [selectedFile]);
+  const selectedFilePendingMutation = selectedFile
+    ? pendingMutationsByPath.has(selectedFile.path)
+    : false;
   const selectedDiffDetailQueryKey =
     selectedFile && selectedScope
       ? queryKeys.diffDetail(selectedFile.path, selectedScope, 3, selectedFile.contentHash)
@@ -609,7 +674,7 @@ export function AppShell({ initialRepo }: AppShellProps) {
 
       return patchOnlyDetail;
     },
-    enabled: Boolean(selectedFile && selectedScope),
+    enabled: Boolean(selectedFile && selectedScope) && !selectedFilePendingMutation,
     placeholderData: (previousData) => previousData,
   });
 
@@ -640,6 +705,39 @@ export function AppShell({ initialRepo }: AppShellProps) {
     }
 
     return map;
+  }
+
+  function getSelectedDiffDetailSeed(path: string): DiffDetailResponse | undefined {
+    if (!selectedFile || selectedFile.path !== path) {
+      return undefined;
+    }
+
+    const cachedSelectedDetail = queryClient.getQueryData<DiffDetailResponse>(selectedDiffDetailQueryKey);
+    return copyDiffDetailCache(cachedSelectedDetail ?? diffDetailQuery.data);
+  }
+
+  function seedDiffCachesForScopeTransition(
+    path: string,
+    contentHash: string,
+    fromScope: DiffScope,
+    toScope: DiffScope,
+  ) {
+    const sourceDiff = copyDiffCache(
+      queryClient.getQueryData<DiffSummaryResponse>(queryKeys.diff(path, fromScope, 3, contentHash)),
+    );
+    const sourceDiffDetail = copyDiffDetailCache(
+      queryClient.getQueryData<DiffDetailResponse>(queryKeys.diffDetail(path, fromScope, 3, contentHash)),
+    );
+    const diffDetailSeed = sourceDiffDetail ?? getSelectedDiffDetailSeed(path);
+    const diffSeed = sourceDiff ?? toDiffSummaryFromDetail(diffDetailSeed);
+
+    if (diffSeed) {
+      queryClient.setQueryData(queryKeys.diff(path, toScope, 3, contentHash), diffSeed);
+    }
+
+    if (diffDetailSeed) {
+      queryClient.setQueryData(queryKeys.diffDetail(path, toScope, 3, contentHash), diffDetailSeed);
+    }
   }
 
   async function cancelFileMutationQueriesForPaths(paths: string[]) {
@@ -718,9 +816,14 @@ export function AppShell({ initialRepo }: AppShellProps) {
     queryClient.setQueryData(queryKeys.quizSession(session.id), session);
   }
 
+  function setCodeReviewSessionCache(session: CodeReviewSession) {
+    queryClient.setQueryData(queryKeys.codeReviewSession(session.id), session);
+  }
+
   async function applyWorkspaceSwitch(nextWorkspace: { repoRoot: string }) {
     queryClient.setQueryData(queryKeys.workspace, nextWorkspace);
     queryClient.removeQueries({ queryKey: queryKeys.quizSessionRoot });
+    queryClient.removeQueries({ queryKey: queryKeys.codeReviewSessionRoot });
 
     setWorkspaceOpen(false);
     setSelectedFileRef(null);
@@ -729,6 +832,8 @@ export function AppShell({ initialRepo }: AppShellProps) {
     setQuizStreamError(null);
     setBypassArmed(false);
     setQuizUnlockSignature(null);
+    setActiveCodeReviewSessionId(null);
+    setCodeReviewStreamError(null);
     setPaneMode("diff");
     setFilesDockMode("idle");
     setFilesDockMessage({
@@ -875,6 +980,29 @@ export function AppShell({ initialRepo }: AppShellProps) {
     },
   });
 
+  const createCodeReviewSessionMutation = useMutation({
+    mutationFn: async () => await createCodeReviewSession({}),
+    onMutate: () => {
+      setCodeReviewStreamError(null);
+      setFilesDockMessage({
+        tone: "info",
+        text: "Running code review across changed files.",
+      });
+    },
+    onSuccess: (session) => {
+      setCodeReviewSessionCache(session);
+      setActiveCodeReviewSessionId(session.id);
+    },
+    onError: (error) => {
+      const message = toUiError(error, "Unable to start code review.").message;
+      setCodeReviewStreamError(message);
+      setFilesDockMessage({
+        tone: "error",
+        text: message,
+      });
+    },
+  });
+
   useEffect(() => {
     if (!activeQuizSessionId) {
       return;
@@ -896,6 +1024,31 @@ export function AppShell({ initialRepo }: AppShellProps) {
     };
   }, [activeQuizSessionId, queryClient]);
 
+  useEffect(() => {
+    if (!activeCodeReviewSessionId) {
+      return;
+    }
+
+    setCodeReviewStreamError(null);
+
+    const dispose = openCodeReviewSessionStream(activeCodeReviewSessionId, {
+      onEvent: (event: CodeReviewSseEvent) => {
+        setCodeReviewSessionCache(event.session);
+
+        if (event.type === "session_error") {
+          setCodeReviewStreamError(event.message);
+        }
+      },
+      onError: (error) => {
+        setCodeReviewStreamError(error.message);
+      },
+    });
+
+    return () => {
+      dispose();
+    };
+  }, [activeCodeReviewSessionId, queryClient]);
+
   const quizValidationPassed =
     quizSession?.status === "validated" &&
     quizUnlockSignature !== null &&
@@ -913,32 +1066,7 @@ export function AppShell({ initialRepo }: AppShellProps) {
       await cancelFileMutationQueries(path);
 
       const nextFiles = updateFilesAndRepo((currentFiles) => applyStageTransition(currentFiles, path));
-
-      const unstagedDiff = copyDiffCache(
-        queryClient.getQueryData<DiffSummaryResponse>(queryKeys.diff(path, "unstaged", 3, contentHash)),
-      );
-      const unstagedDiffDetail = copyDiffDetailCache(
-        queryClient.getQueryData<DiffDetailResponse>(
-          queryKeys.diffDetail(path, "unstaged", 3, contentHash),
-        ),
-      );
-
-      if (unstagedDiff) {
-        queryClient.setQueryData(queryKeys.diff(path, "staged", 3, contentHash), unstagedDiff);
-      }
-
-      if (unstagedDiffDetail) {
-        queryClient.setQueryData(
-          queryKeys.diffDetail(path, "staged", 3, contentHash),
-          unstagedDiffDetail,
-        );
-      }
-
-      queryClient.removeQueries({ queryKey: queryKeys.diff(path, "unstaged", 3, contentHash), exact: true });
-      queryClient.removeQueries({
-        queryKey: queryKeys.diffDetail(path, "unstaged", 3, contentHash),
-        exact: true,
-      });
+      seedDiffCachesForScopeTransition(path, contentHash, "unstaged", "staged");
       if (selectedFile && selectedFile.path === path) {
         const matching = nextFiles.find((file) => file.path === path && file.status === "staged");
         if (matching) {
@@ -964,31 +1092,7 @@ export function AppShell({ initialRepo }: AppShellProps) {
 
       for (const path of uniquePaths) {
         const contentHash = contentHashByPath.get(path) ?? "none";
-        const unstagedDiff = copyDiffCache(
-          queryClient.getQueryData<DiffSummaryResponse>(queryKeys.diff(path, "unstaged", 3, contentHash)),
-        );
-        const unstagedDiffDetail = copyDiffDetailCache(
-          queryClient.getQueryData<DiffDetailResponse>(
-            queryKeys.diffDetail(path, "unstaged", 3, contentHash),
-          ),
-        );
-
-        if (unstagedDiff) {
-          queryClient.setQueryData(queryKeys.diff(path, "staged", 3, contentHash), unstagedDiff);
-        }
-
-        if (unstagedDiffDetail) {
-          queryClient.setQueryData(
-            queryKeys.diffDetail(path, "staged", 3, contentHash),
-            unstagedDiffDetail,
-          );
-        }
-
-        queryClient.removeQueries({ queryKey: queryKeys.diff(path, "unstaged", 3, contentHash), exact: true });
-        queryClient.removeQueries({
-          queryKey: queryKeys.diffDetail(path, "unstaged", 3, contentHash),
-          exact: true,
-        });
+        seedDiffCachesForScopeTransition(path, contentHash, "unstaged", "staged");
       }
 
       if (selectedFile && pathSet.has(selectedFile.path)) {
@@ -1009,37 +1113,15 @@ export function AppShell({ initialRepo }: AppShellProps) {
     onMutate: async (path) => {
       const contentHash = getContentHashByPath(path);
       await cancelFileMutationQueries(path);
-
       const stagedDiff = copyDiffCache(
         queryClient.getQueryData<DiffSummaryResponse>(queryKeys.diff(path, "staged", 3, contentHash)),
-      );
-      const stagedDiffDetail = copyDiffDetailCache(
-        queryClient.getQueryData<DiffDetailResponse>(
-          queryKeys.diffDetail(path, "staged", 3, contentHash),
-        ),
       );
 
       const nextFiles = updateFilesAndRepo((currentFiles) => {
         const targetStatus = inferUnstageTargetStatus(currentFiles, path, stagedDiff);
         return applyUnstageTransition(currentFiles, path, targetStatus);
       });
-
-      if (stagedDiff) {
-        queryClient.setQueryData(queryKeys.diff(path, "unstaged", 3, contentHash), stagedDiff);
-      }
-
-      if (stagedDiffDetail) {
-        queryClient.setQueryData(
-          queryKeys.diffDetail(path, "unstaged", 3, contentHash),
-          stagedDiffDetail,
-        );
-      }
-
-      queryClient.removeQueries({ queryKey: queryKeys.diff(path, "staged", 3, contentHash), exact: true });
-      queryClient.removeQueries({
-        queryKey: queryKeys.diffDetail(path, "staged", 3, contentHash),
-        exact: true,
-      });
+      seedDiffCachesForScopeTransition(path, contentHash, "staged", "unstaged");
       if (selectedFile && selectedFile.path === path && selectedFile.status === "staged") {
         const matching = nextFiles.find((file) => file.path === path && file.status !== "staged");
         setSelectedFileRef(matching ? toSelectedFileRef(matching) : null);
@@ -1071,17 +1153,6 @@ export function AppShell({ initialRepo }: AppShellProps) {
         }),
       );
 
-      const stagedDiffDetailByPath = new Map(
-        uniquePaths.map((path) => {
-          const contentHash = contentHashByPath.get(path) ?? "none";
-          const cached = queryClient.getQueryData<DiffDetailResponse>(
-            queryKeys.diffDetail(path, "staged", 3, contentHash),
-          );
-
-          return [path, copyDiffDetailCache(cached)] as const;
-        }),
-      );
-
       const nextFiles = updateFilesAndRepo((currentFiles) => {
         const targetStatusByPath = new Map<string, ChangedFileStatus>();
 
@@ -1097,25 +1168,7 @@ export function AppShell({ initialRepo }: AppShellProps) {
 
       for (const path of uniquePaths) {
         const contentHash = contentHashByPath.get(path) ?? "none";
-        const stagedDiff = stagedDiffByPath.get(path);
-        const stagedDiffDetail = stagedDiffDetailByPath.get(path);
-
-        if (stagedDiff) {
-          queryClient.setQueryData(queryKeys.diff(path, "unstaged", 3, contentHash), stagedDiff);
-        }
-
-        if (stagedDiffDetail) {
-          queryClient.setQueryData(
-            queryKeys.diffDetail(path, "unstaged", 3, contentHash),
-            stagedDiffDetail,
-          );
-        }
-
-        queryClient.removeQueries({ queryKey: queryKeys.diff(path, "staged", 3, contentHash), exact: true });
-        queryClient.removeQueries({
-          queryKey: queryKeys.diffDetail(path, "staged", 3, contentHash),
-          exact: true,
-        });
+        seedDiffCachesForScopeTransition(path, contentHash, "staged", "unstaged");
       }
 
       if (selectedFile && selectedFile.status === "staged" && pathSet.has(selectedFile.path)) {
@@ -1136,9 +1189,9 @@ export function AppShell({ initialRepo }: AppShellProps) {
     onMutate: () => {
       setFilesDockMessage(null);
     },
-    onSuccess: async () => {
+    onSuccess: async (response) => {
+      const successMessage = response.message.trim() || "Commit created.";
       setFilesDockMode("push");
-      setFilesDockMessage(null);
       setCommitMessageDraft("");
       setPaneMode("diff");
       setBypassArmed(false);
@@ -1150,6 +1203,10 @@ export function AppShell({ initialRepo }: AppShellProps) {
       }
       setActiveQuizSessionId(null);
       await refreshQueries();
+      setFilesDockMessage({
+        tone: "info",
+        text: successMessage,
+      });
     },
     onError: (error) => {
       setFilesDockMode("idle");
@@ -1182,9 +1239,14 @@ export function AppShell({ initialRepo }: AppShellProps) {
     onMutate: () => {
       setFilesDockMessage(null);
     },
-    onSuccess: async () => {
+    onSuccess: async (response) => {
+      const successMessage = response.message.trim() || "Push completed.";
       resetFilesDockState();
       await refreshQueries();
+      setFilesDockMessage({
+        tone: "info",
+        text: successMessage,
+      });
     },
     onError: (error, createUpstream) => {
       if (error instanceof ApiRequestError && error.code === "NO_UPSTREAM" && !createUpstream) {
@@ -1249,6 +1311,14 @@ export function AppShell({ initialRepo }: AppShellProps) {
 
     setWorkspaceError(null);
     pickWorkspaceMutation.mutate();
+  }
+
+  function requestCodeReviewRun() {
+    if (createCodeReviewSessionMutation.isPending) {
+      return;
+    }
+
+    createCodeReviewSessionMutation.mutate();
   }
 
   function startOrResumeQuiz(message: string) {
@@ -1514,6 +1584,12 @@ export function AppShell({ initialRepo }: AppShellProps) {
           filesError={filesUiError?.message ?? null}
           filesErrorRetryable={filesUiError?.retryable ?? false}
           pendingMutationsByPath={pendingMutationsByPath}
+          codeReviewSession={codeReviewSession}
+          isStartingCodeReview={createCodeReviewSessionMutation.isPending}
+          isLoadingCodeReviewSession={
+            Boolean(activeCodeReviewSessionId) && codeReviewSessionQuery.isPending
+          }
+          codeReviewStreamError={codeReviewStreamError}
           isCommitting={commitMutation.isPending}
           isPushing={pushMutation.isPending}
           isGeneratingCommitMessage={generateCommitMessageMutation.isPending}
@@ -1534,6 +1610,7 @@ export function AppShell({ initialRepo }: AppShellProps) {
           onUnstageFile={requestUnstage}
           onStageFiles={requestStageMany}
           onUnstageFiles={requestUnstageMany}
+          onRunCodeReview={requestCodeReviewRun}
           onCommitChanges={requestCommit}
           onPushChanges={requestPush}
           onGenerateCommitMessage={requestGenerateCommitMessage}

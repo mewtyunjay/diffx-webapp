@@ -16,4 +16,6 @@ export const queryKeys = {
     ["diffDetail", path, scope, contextLines, contentHash] as const,
   quizSessionRoot: ["quizSession"] as const,
   quizSession: (sessionId: string) => ["quizSession", sessionId] as const,
+  codeReviewSessionRoot: ["codeReviewSession"] as const,
+  codeReviewSession: (sessionId: string) => ["codeReviewSession", sessionId] as const,
 };

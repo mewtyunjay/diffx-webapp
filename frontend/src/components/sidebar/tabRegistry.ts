@@ -1,4 +1,4 @@
-export type SidebarTabId = "files";
+export type SidebarTabId = "files" | "code-review";
 
 export type SidebarTabDefinition = {
   id: SidebarTabId;
@@ -7,4 +7,5 @@ export type SidebarTabDefinition = {
 
 export const tabRegistry: SidebarTabDefinition[] = [
   { id: "files", label: "Files" },
+  { id: "code-review", label: "Code Review" },
 ];

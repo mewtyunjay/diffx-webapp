@@ -51,6 +51,8 @@ export function DiffPanel({
   quizPanel,
 }: DiffPanelProps) {
   const diffFile = diffQuery.data?.file;
+  const resolvedAdditions = selectedFile?.stats?.additions ?? diffFile?.stats.additions ?? null;
+  const resolvedDeletions = selectedFile?.stats?.deletions ?? diffFile?.stats.deletions ?? null;
 
   const fullFiles = useMemo(() => {
     if (!diffFile || !diffQuery.data) {
@@ -175,8 +177,8 @@ export function DiffPanel({
           onNextFile={onNextFile}
           canGoPrevious={canGoPrevious}
           canGoNext={canGoNext}
-          additions={selectedFile.stats?.additions ?? null}
-          deletions={selectedFile.stats?.deletions ?? null}
+          additions={resolvedAdditions}
+          deletions={resolvedDeletions}
         />
       ) : null}
 

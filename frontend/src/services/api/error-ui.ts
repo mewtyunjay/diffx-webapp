@@ -10,6 +10,7 @@ const RETRYABLE_CODES = new Set<ApiErrorCode>([
   "GIT_COMMAND_FAILED",
   "INTERNAL_ERROR",
   "QUIZ_GENERATION_FAILED",
+  "REVIEW_GENERATION_FAILED",
   "COMMIT_MESSAGE_GENERATION_FAILED",
 ]);
 
@@ -27,6 +28,7 @@ const COPY_BY_CODE: Record<ApiErrorCode, string> = {
   INVALID_QUIZ_SESSION: "Quiz session request is invalid.",
   INVALID_QUIZ_ANSWER: "One or more quiz answers are invalid.",
   INVALID_QUIZ_PAYLOAD: "Generated quiz payload is invalid.",
+  INVALID_REVIEW_SESSION: "Code review session request is invalid.",
   INVALID_COMMIT_MESSAGE: "Commit message is invalid. Please provide a clear message.",
   COMMIT_MESSAGE_GENERATION_FAILED: "Unable to generate a commit message.",
   INVALID_PUSH_REQUEST: "Push request is invalid.",
@@ -36,6 +38,8 @@ const COPY_BY_CODE: Record<ApiErrorCode, string> = {
   QUIZ_VALIDATION_FAILED: "Quiz validation failed. Review answers and try again.",
   QUIZ_REPO_STATE_CHANGED: "Repository changed since quiz started. Generate a new quiz.",
   QUIZ_GENERATION_FAILED: "Quiz generation failed. Verify local Codex login and retry.",
+  REVIEW_SESSION_NOT_FOUND: "Code review session no longer exists. Start a new run.",
+  REVIEW_GENERATION_FAILED: "Code review failed. Verify local Codex login and retry.",
   NO_UPSTREAM: "No upstream branch is configured for this branch.",
   GIT_COMMAND_FAILED: "Git command failed. Refresh and try again.",
   INTERNAL_ERROR: "Internal server error. Try again in a moment.",

@@ -13,6 +13,7 @@ import branchesRoute from "./routes/branches.route.js";
 import settingsRoute from "./routes/settings.route.js";
 import quizRoute from "./routes/quiz.route.js";
 import workspaceRoute from "./routes/workspace.route.js";
+import codeReviewRoute from "./routes/code-review.route.js";
 import { createHttpRequestLoggingMiddleware } from "./logging/http-logging.middleware.js";
 
 export function createApp() {
@@ -32,6 +33,7 @@ export function createApp() {
   app.use("/api", branchesRoute);
   app.use("/api", settingsRoute);
   app.use("/api", quizRoute);
+  app.use("/api", codeReviewRoute);
   app.use("/api", workspaceRoute);
 
   return app;

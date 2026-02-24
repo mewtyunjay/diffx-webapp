@@ -123,6 +123,7 @@ export type ApiErrorCode =
   | "INVALID_QUIZ_SESSION"
   | "INVALID_QUIZ_ANSWER"
   | "INVALID_QUIZ_PAYLOAD"
+  | "INVALID_REVIEW_SESSION"
   | "INVALID_COMMIT_MESSAGE"
   | "COMMIT_MESSAGE_GENERATION_FAILED"
   | "INVALID_PUSH_REQUEST"
@@ -132,6 +133,8 @@ export type ApiErrorCode =
   | "QUIZ_VALIDATION_FAILED"
   | "QUIZ_REPO_STATE_CHANGED"
   | "QUIZ_GENERATION_FAILED"
+  | "REVIEW_SESSION_NOT_FOUND"
+  | "REVIEW_GENERATION_FAILED"
   | "NO_UPSTREAM"
   | "GIT_COMMAND_FAILED"
   | "INTERNAL_ERROR";
@@ -279,6 +282,76 @@ export type QuizSseEvent =
   | QuizSessionErrorEvent
   | QuizReadyEvent
   | QuizSessionCompleteEvent;
+
+export type CodeReviewSeverity = "critical" | "high" | "medium" | "low";
+export type CodeReviewIssueType = "security" | "correctness" | "performance" | "maintainability";
+
+export type CodeReviewFinding = {
+  id: string;
+  severity: CodeReviewSeverity;
+  type: CodeReviewIssueType;
+  title: string;
+  summary: string;
+  path: string;
+  lineStart: number | null;
+  lineEnd: number | null;
+  agent: string;
+};
+
+export type CodeReviewSessionStatus = "queued" | "running" | "ready" | "failed" | "cancelled";
+
+export type CodeReviewSessionProgress = {
+  phase: "queued" | "preparing" | "analyzing" | "finalizing";
+  percent: number;
+  message: string;
+};
+
+export type CodeReviewFailure = {
+  message: string;
+  retryable: boolean;
+};
+
+export type CodeReviewSession = {
+  id: string;
+  status: CodeReviewSessionStatus;
+  sourceFingerprint: string;
+  createdAt: string;
+  updatedAt: string;
+  progress: CodeReviewSessionProgress;
+  findings: CodeReviewFinding[];
+  failure: CodeReviewFailure | null;
+};
+
+export type CreateCodeReviewSessionRequest = {};
+
+export type CodeReviewSessionStatusEvent = {
+  type: "session_status";
+  session: CodeReviewSession;
+};
+
+export type CodeReviewFindingEvent = {
+  type: "finding";
+  session: CodeReviewSession;
+  finding: CodeReviewFinding;
+};
+
+export type CodeReviewSessionErrorEvent = {
+  type: "session_error";
+  session: CodeReviewSession;
+  retryable: boolean;
+  message: string;
+};
+
+export type CodeReviewSessionCompleteEvent = {
+  type: "session_complete";
+  session: CodeReviewSession;
+};
+
+export type CodeReviewSseEvent =
+  | CodeReviewSessionStatusEvent
+  | CodeReviewFindingEvent
+  | CodeReviewSessionErrorEvent
+  | CodeReviewSessionCompleteEvent;
 
 export type ActionResponse = {
   ok: boolean;
