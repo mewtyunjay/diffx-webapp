@@ -7,6 +7,16 @@ import { execGit, toGitApiError } from "./git-client.js";
 import { getRepoContext } from "./repo-context.service.js";
 import { getStatusEntries, toChangedFiles, type GitStatusEntry } from "./status.service.js";
 
+type ChangedFilesCacheEntry = {
+  value: ChangedFile[];
+  statusSignature: string;
+  expiresAt: number;
+};
+
+const CHANGED_FILES_CACHE_TTL_MS = 1_000;
+const MAX_UNTRACKED_STATS_FILES = 24;
+const changedFilesCache = new Map<string, ChangedFilesCacheEntry>();
+
 function digest(input: string): string {
   return createHash("sha256").update(input).digest("hex");
 }
@@ -123,6 +133,10 @@ function listUntrackedPaths(entries: GitStatusEntry[]): string[] {
   return [...new Set(entries.filter((entry) => entry.untracked).map((entry) => entry.path))];
 }
 
+function toStatusSignature(files: Array<Pick<ChangedFile, "path" | "status">>): string {
+  return files.map((file) => `${file.status}:${file.path}`).join("|");
+}
+
 function unknownStats(): ChangedFileStats {
   return {
     additions: null,
@@ -135,9 +149,15 @@ async function getUntrackedStatsByPath(
   entries: GitStatusEntry[],
 ): Promise<Map<string, ChangedFileStats>> {
   const untrackedPaths = listUntrackedPaths(entries);
+  if (untrackedPaths.length === 0) {
+    return new Map();
+  }
+
+  const boundedPaths = untrackedPaths.slice(0, MAX_UNTRACKED_STATS_FILES);
+  const skippedPaths = untrackedPaths.slice(MAX_UNTRACKED_STATS_FILES);
 
   const pairs: Array<[string, ChangedFileStats]> = await Promise.all(
-    untrackedPaths.map(async (relativePath) => {
+    boundedPaths.map(async (relativePath) => {
       const absolutePath = path.resolve(repoRoot, relativePath);
 
       try {
@@ -160,6 +180,10 @@ async function getUntrackedStatsByPath(
       }
     }),
   );
+
+  for (const relativePath of skippedPaths) {
+    pairs.push([relativePath, unknownStats()]);
+  }
 
   return new Map<string, ChangedFileStats>(pairs);
 }
@@ -191,9 +215,19 @@ export async function getChangedFiles(): Promise<ChangedFile[]> {
 
   const entries = await getStatusEntries(context.repoRoot);
   const changedFiles = toChangedFiles(entries);
+  const statusSignature = toStatusSignature(changedFiles);
+  const cached = changedFilesCache.get(context.repoRoot);
+
+  if (cached && cached.statusSignature === statusSignature && cached.expiresAt > Date.now()) {
+    return cached.value;
+  }
+
   const uniquePaths = [...new Set(changedFiles.map((file) => file.path))].sort((left, right) =>
     left.localeCompare(right),
   );
+  const hasStagedChanges = entries.some((entry) => entry.staged);
+  const hasUnstagedChanges = entries.some((entry) => entry.unstaged);
+  const hasUntrackedChanges = entries.some((entry) => entry.untracked);
 
   const [hashedPaths, stagedStatsByPath, unstagedStatsByPath, untrackedStatsByPath] = await Promise.all([
     Promise.all(
@@ -202,14 +236,14 @@ export async function getChangedFiles(): Promise<ChangedFile[]> {
           [relativePath, await getContentHash(context.repoRoot, relativePath)] as const,
       ),
     ),
-    getDiffStatsByPath(context.repoRoot, "staged"),
-    getDiffStatsByPath(context.repoRoot, "unstaged"),
-    getUntrackedStatsByPath(context.repoRoot, entries),
+    hasStagedChanges ? getDiffStatsByPath(context.repoRoot, "staged") : Promise.resolve(new Map()),
+    hasUnstagedChanges ? getDiffStatsByPath(context.repoRoot, "unstaged") : Promise.resolve(new Map()),
+    hasUntrackedChanges ? getUntrackedStatsByPath(context.repoRoot, entries) : Promise.resolve(new Map()),
   ]);
 
   const contentHashByPath = new Map(hashedPaths);
 
-  return changedFiles.map((file) => ({
+  const value = changedFiles.map((file) => ({
     ...file,
     contentHash: contentHashByPath.get(file.path) ?? digest("unknown"),
     stats: pickStatsForFile(
@@ -220,4 +254,21 @@ export async function getChangedFiles(): Promise<ChangedFile[]> {
       untrackedStatsByPath,
     ),
   }));
+
+  changedFilesCache.set(context.repoRoot, {
+    value,
+    statusSignature,
+    expiresAt: Date.now() + CHANGED_FILES_CACHE_TTL_MS,
+  });
+
+  return value;
+}
+
+export function invalidateChangedFilesCache(repoRoot?: string): void {
+  if (typeof repoRoot === "string" && repoRoot.length > 0) {
+    changedFilesCache.delete(repoRoot);
+    return;
+  }
+
+  changedFilesCache.clear();
 }

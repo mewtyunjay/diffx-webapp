@@ -50,6 +50,7 @@ function renderSidebarShell(options?: {
       files={FILES}
       selectedFile={FILES[0]}
       isLoadingFiles={false}
+      isRefreshingFiles={false}
       filesError={null}
       filesErrorRetryable={false}
       pendingMutationsByPath={new Map()}
@@ -102,5 +103,45 @@ describe("SidebarShell tabs", () => {
     fireEvent.click(screen.getByRole("button", { name: "run review" }));
 
     expect(onRunCodeReview).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows non-blocking refresh note while retaining file list", () => {
+    render(
+      <SidebarShell
+        branch="main"
+        files={FILES}
+        selectedFile={FILES[0]}
+        isLoadingFiles={false}
+        isRefreshingFiles
+        filesError={null}
+        filesErrorRetryable={false}
+        pendingMutationsByPath={new Map()}
+        codeReviewSession={null}
+        isStartingCodeReview={false}
+        isLoadingCodeReviewSession={false}
+        codeReviewStreamError={null}
+        isCommitting={false}
+        isPushing={false}
+        isGeneratingCommitMessage={false}
+        commitMessage=""
+        commitDisabled={false}
+        commitTooltip={undefined}
+        canPush={false}
+        onCommitMessageChange={() => undefined}
+        onRetryFiles={() => undefined}
+        onSelectFile={() => undefined}
+        onStageFile={() => undefined}
+        onUnstageFile={() => undefined}
+        onStageFiles={() => undefined}
+        onUnstageFiles={() => undefined}
+        onRunCodeReview={() => undefined}
+        onCommitChanges={() => undefined}
+        onPushChanges={() => undefined}
+        onGenerateCommitMessage={() => undefined}
+      />,
+    );
+
+    expect(screen.getByText("Refreshing files...")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "stage frontend/src/App.tsx" })).toBeInTheDocument();
   });
 });
