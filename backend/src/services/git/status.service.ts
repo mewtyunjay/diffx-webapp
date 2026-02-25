@@ -18,7 +18,7 @@ type StatusCacheEntry = {
   expiresAt: number;
 };
 
-const STATUS_ENTRIES_CACHE_TTL_MS = 150;
+const STATUS_ENTRIES_CACHE_TTL_MS = 1_500;
 const statusEntriesCache = new Map<string, StatusCacheEntry>();
 const inFlightStatusEntriesRequests = new Map<string, Promise<GitStatusEntry[]>>();
 

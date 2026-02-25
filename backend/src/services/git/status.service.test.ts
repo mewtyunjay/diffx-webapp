@@ -51,7 +51,7 @@ describe("getStatusEntries cache", () => {
   it("refreshes status entries after ttl expires", async () => {
     await getStatusEntries("/repo");
 
-    vi.advanceTimersByTime(151);
+    vi.advanceTimersByTime(1501);
 
     await getStatusEntries("/repo");
 
@@ -65,5 +65,26 @@ describe("getStatusEntries cache", () => {
     await getStatusEntries("/repo");
 
     expect(execGitMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("coalesces concurrent status requests for the same repository", async () => {
+    let resolveGitCommand: ((value: ReturnType<typeof buildGitExecResult>) => void) | null = null;
+    execGitMock.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveGitCommand = resolve;
+        }),
+    );
+
+    const firstRequest = getStatusEntries("/repo");
+    const secondRequest = getStatusEntries("/repo");
+
+    expect(execGitMock).toHaveBeenCalledTimes(1);
+
+    resolveGitCommand?.(buildGitExecResult(" M src/app.ts\n"));
+
+    const [first, second] = await Promise.all([firstRequest, secondRequest]);
+    expect(first).toEqual(second);
+    expect(execGitMock).toHaveBeenCalledTimes(1);
   });
 });

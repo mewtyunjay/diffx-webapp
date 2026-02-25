@@ -20,14 +20,23 @@ export async function getRepoSummary(): Promise<RepoSummary> {
 
   const entries = await getStatusEntries(context.repoRoot);
   const remoteHash = await getRemoteHash(context.repoRoot, context.branch);
+  let stagedCount = 0;
+  let unstagedCount = 0;
+  let untrackedCount = 0;
+
+  for (const entry of entries) {
+    if (entry.staged) stagedCount += 1;
+    if (entry.unstaged) unstagedCount += 1;
+    if (entry.untracked) untrackedCount += 1;
+  }
 
   return {
     mode: "git",
     repoName: context.repoName,
     branch: context.branch,
-    stagedCount: entries.filter((entry) => entry.staged).length,
-    unstagedCount: entries.filter((entry) => entry.unstaged).length,
-    untrackedCount: entries.filter((entry) => entry.untracked).length,
+    stagedCount,
+    unstagedCount,
+    untrackedCount,
     remoteHash,
   };
 }

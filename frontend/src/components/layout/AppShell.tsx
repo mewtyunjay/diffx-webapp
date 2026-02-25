@@ -67,6 +67,7 @@ type FilesDockMessage = {
   text: string;
 } | null;
 const FILES_DOCK_MESSAGE_AUTO_CLEAR_MS = 3_000;
+const FILE_MUTATION_REVALIDATE_DEBOUNCE_MS = 180;
 type SelectedFileRef = {
   path: string;
   status: ChangedFileStatus;
@@ -395,6 +396,9 @@ export function AppShell({ initialRepo }: AppShellProps) {
   const [pendingMutationsByPath, setPendingMutationsByPath] = useState<Map<string, PendingFileMutation>>(
     () => new Map(),
   );
+  const selectedPathPreferenceRef = useRef<string | null>(null);
+  const queuedRevalidationPathsRef = useRef<Set<string>>(new Set());
+  const queuedRevalidationTimerRef = useRef<number | null>(null);
 
   const pendingMutationsByPathRef = useRef<Map<string, PendingFileMutation>>(new Map());
 
@@ -453,6 +457,7 @@ export function AppShell({ initialRepo }: AppShellProps) {
     queryFn: ({ signal }) => getRepoSummary({ signal }),
     initialData: initialRepo,
     refetchInterval: 15000,
+    staleTime: 5_000,
   });
 
   const repo = repoQuery.data ?? initialRepo;
@@ -462,6 +467,7 @@ export function AppShell({ initialRepo }: AppShellProps) {
     queryKey: filesQueryKey,
     queryFn: ({ signal }) => getChangedFiles({ signal }),
     placeholderData: (previousData) => previousData,
+    staleTime: 5_000,
   });
 
   const healthQuery = useQuery({
@@ -538,6 +544,24 @@ export function AppShell({ initialRepo }: AppShellProps) {
 
   useEffect(() => {
     if (!selectedFileRef) {
+      return;
+    }
+
+    selectedPathPreferenceRef.current = selectedFileRef.path;
+  }, [selectedFileRef]);
+
+  useEffect(() => {
+    if (!selectedFileRef) {
+      const preferredPath = selectedPathPreferenceRef.current;
+      const preferredMatch = preferredPath
+        ? files.find((entry) => entry.path === preferredPath)
+        : null;
+
+      if (preferredMatch) {
+        setSelectedFileRef(toSelectedFileRef(preferredMatch));
+        return;
+      }
+
       if (files.length > 0) {
         setSelectedFileRef(toSelectedFileRef(files[0]));
       }
@@ -561,7 +585,14 @@ export function AppShell({ initialRepo }: AppShellProps) {
       return;
     }
 
-    if (files.length === 0 && filesQuery.isFetching) {
+    if (filesQuery.isFetching) {
+      return;
+    }
+
+    const preferredPath = selectedPathPreferenceRef.current;
+    const preferredMatch = preferredPath ? files.find((entry) => entry.path === preferredPath) : null;
+    if (preferredMatch) {
+      setSelectedFileRef(toSelectedFileRef(preferredMatch));
       return;
     }
 
@@ -676,6 +707,7 @@ export function AppShell({ initialRepo }: AppShellProps) {
     },
     enabled: Boolean(selectedFile && selectedScope) && !selectedFilePendingMutation,
     placeholderData: (previousData) => previousData,
+    staleTime: 5_000,
   });
 
   const selectedIndex = selectedFile
@@ -742,20 +774,12 @@ export function AppShell({ initialRepo }: AppShellProps) {
 
   async function cancelFileMutationQueriesForPaths(paths: string[]) {
     const uniquePaths = [...new Set(paths)];
-    const contentHashByPath = getContentHashMap(uniquePaths);
 
     await Promise.all([
       queryClient.cancelQueries({ queryKey: queryKeys.filesRoot }),
       queryClient.cancelQueries({ queryKey: queryKeys.repo }),
       ...uniquePaths.flatMap((path) => [
-        queryClient.cancelQueries({
-          queryKey: queryKeys.diff(path, "staged", 3, contentHashByPath.get(path) ?? "none"),
-          exact: true,
-        }),
-        queryClient.cancelQueries({
-          queryKey: queryKeys.diff(path, "unstaged", 3, contentHashByPath.get(path) ?? "none"),
-          exact: true,
-        }),
+        queryClient.cancelQueries({ queryKey: ["diff", path] }),
         queryClient.cancelQueries({ queryKey: queryKeys.diffDetailPath(path) }),
       ]),
     ]);
@@ -767,28 +791,44 @@ export function AppShell({ initialRepo }: AppShellProps) {
 
   function revalidateAfterFileMutations(paths: string[]) {
     const uniquePaths = [...new Set(paths)];
-    const contentHashByPath = getContentHashMap(uniquePaths);
 
-    void Promise.all([
-      queryClient.invalidateQueries({ queryKey: queryKeys.repo }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.filesRoot }),
-      ...uniquePaths.flatMap((path) => [
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.diff(path, "staged", 3, contentHashByPath.get(path) ?? "none"),
-          exact: true,
-        }),
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.diff(path, "unstaged", 3, contentHashByPath.get(path) ?? "none"),
-          exact: true,
-        }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.diffDetailPath(path) }),
-      ]),
-    ]);
+    for (const path of uniquePaths) {
+      queuedRevalidationPathsRef.current.add(path);
+    }
+
+    if (queuedRevalidationTimerRef.current !== null) {
+      return;
+    }
+
+    queuedRevalidationTimerRef.current = window.setTimeout(() => {
+      queuedRevalidationTimerRef.current = null;
+      const dirtyPaths = [...queuedRevalidationPathsRef.current];
+      queuedRevalidationPathsRef.current.clear();
+
+      for (const path of dirtyPaths) {
+        queryClient.removeQueries({ queryKey: ["diff", path] });
+        queryClient.removeQueries({ queryKey: queryKeys.diffDetailPath(path) });
+      }
+
+      void Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.repo }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.filesRoot }),
+      ]);
+    }, FILE_MUTATION_REVALIDATE_DEBOUNCE_MS);
   }
 
   function revalidateAfterFileMutation(path: string) {
     revalidateAfterFileMutations([path]);
   }
+
+  useEffect(() => {
+    return () => {
+      if (queuedRevalidationTimerRef.current !== null) {
+        window.clearTimeout(queuedRevalidationTimerRef.current);
+        queuedRevalidationTimerRef.current = null;
+      }
+    };
+  }, []);
 
   function updateFilesAndRepo(updater: (currentFiles: ChangedFile[]) => ChangedFile[]): ChangedFile[] {
     const currentFiles = queryClient.getQueryData<ChangedFile[]>(filesQueryKey) ?? files;
@@ -1012,6 +1052,7 @@ export function AppShell({ initialRepo }: AppShellProps) {
 
     const dispose = openQuizSessionStream(activeQuizSessionId, {
       onEvent: (event: QuizSseEvent) => {
+        setQuizStreamError(null);
         setQuizSessionCache(event.session);
       },
       onError: (error) => {
@@ -1033,6 +1074,7 @@ export function AppShell({ initialRepo }: AppShellProps) {
 
     const dispose = openCodeReviewSessionStream(activeCodeReviewSessionId, {
       onEvent: (event: CodeReviewSseEvent) => {
+        setCodeReviewStreamError(null);
         setCodeReviewSessionCache(event.session);
 
         if (event.type === "session_error") {
@@ -1580,7 +1622,8 @@ export function AppShell({ initialRepo }: AppShellProps) {
           branch={repo.branch}
           files={files}
           selectedFile={selectedFile}
-          isLoadingFiles={filesQuery.isPending}
+          isLoadingFiles={filesQuery.isPending && !filesQuery.data}
+          isRefreshingFiles={filesQuery.isFetching && Boolean(filesQuery.data)}
           filesError={filesUiError?.message ?? null}
           filesErrorRetryable={filesUiError?.retryable ?? false}
           pendingMutationsByPath={pendingMutationsByPath}
