@@ -10,6 +10,7 @@ type SidebarShellProps = {
   files: ChangedFile[];
   selectedFile: ChangedFile | null;
   isLoadingFiles: boolean;
+  isRefreshingFiles: boolean;
   filesError: string | null;
   filesErrorRetryable: boolean;
   pendingMutationsByPath: ReadonlyMap<string, "stage" | "unstage">;
@@ -42,6 +43,7 @@ export function SidebarShell({
   files,
   selectedFile,
   isLoadingFiles,
+  isRefreshingFiles,
   filesError,
   filesErrorRetryable,
   pendingMutationsByPath,
@@ -102,6 +104,9 @@ export function SidebarShell({
         {activeTab === "files" ? (
           <>
             {isLoadingFiles ? <p className="inline-note">Loading files...</p> : null}
+            {isRefreshingFiles && !isLoadingFiles && !filesError ? (
+              <p className="inline-note">Refreshing files...</p>
+            ) : null}
             {filesError ? (
               <div className="inline-error-block">
                 <p className="error-note">{filesError}</p>
@@ -112,7 +117,7 @@ export function SidebarShell({
                 ) : null}
               </div>
             ) : null}
-            {!isLoadingFiles && !filesError ? (
+            {!filesError && (!isLoadingFiles || files.length > 0) ? (
               <FilesTab
                 files={files}
                 selectedFile={selectedFile}

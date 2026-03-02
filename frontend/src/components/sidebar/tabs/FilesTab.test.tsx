@@ -149,4 +149,45 @@ describe("FilesTab row actions", () => {
     expect(within(row!).getByText("+5")).toBeInTheDocument();
     expect(within(row!).getByText("-0")).toBeInTheDocument();
   });
+
+  it("renders pseudo parent paths beside file names for duplicate basenames", () => {
+    renderFilesTab({
+      files: [
+        {
+          path: "src/features/gantt/panels/index.ts",
+          status: "unstaged",
+          contentHash: "hash-a",
+          stats: null,
+        },
+        {
+          path: "src/features/gantt/toolbar/index.ts",
+          status: "unstaged",
+          contentHash: "hash-b",
+          stats: null,
+        },
+      ],
+    });
+
+    expect(screen.getAllByRole("button", { name: "index.ts" })).toHaveLength(2);
+    expect(screen.getByText(".../src/features/gantt/panels")).toBeInTheDocument();
+    expect(screen.getByText(".../src/features/gantt/toolbar")).toBeInTheDocument();
+  });
+
+  it("omits pseudo path metadata for root-level files", () => {
+    renderFilesTab({
+      files: [
+        {
+          path: "README.md",
+          status: "unstaged",
+          contentHash: "hash-root",
+          stats: null,
+        },
+      ],
+    });
+
+    const rowButton = screen.getByRole("button", { name: "README.md" });
+    const row = rowButton.closest("li");
+    expect(row).not.toBeNull();
+    expect(within(row!).queryByText(/\.\.\.\//)).not.toBeInTheDocument();
+  });
 });

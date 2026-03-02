@@ -14,12 +14,13 @@ import {
   execGit,
   toGitApiError,
 } from "./git-client.js";
-import { getChangedFiles } from "./files.service.js";
+import { getChangedFiles, invalidateChangedFilesCache } from "./files.service.js";
 import { resolveRepoPath } from "./path.service.js";
 import {
   invalidateRepoContextCache,
   requireGitContext,
 } from "./repo-context.service.js";
+import { invalidateRemoteHashCache } from "./revision-hash.service.js";
 import { invalidateStatusEntriesCache } from "./status.service.js";
 
 let mutationQueue: Promise<void> = Promise.resolve();
@@ -60,6 +61,8 @@ function resolveUniqueRelativePaths(repoRoot: string, requestedPaths: string[]):
 function invalidateGitDerivedCaches(): void {
   invalidateRepoContextCache();
   invalidateStatusEntriesCache();
+  invalidateChangedFilesCache();
+  invalidateRemoteHashCache();
 }
 
 const execFileAsync = promisify(execFile);

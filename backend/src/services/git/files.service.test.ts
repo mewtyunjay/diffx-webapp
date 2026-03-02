@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("node:fs/promises", () => ({
   stat: vi.fn(),
@@ -42,6 +42,8 @@ describe("getChangedFiles", () => {
   };
 
   beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-02-24T00:00:00.000Z"));
     vi.resetAllMocks();
 
     getRepoContextMock.mockResolvedValue({
@@ -53,6 +55,10 @@ describe("getChangedFiles", () => {
 
     execGitMock.mockResolvedValue(emptyGitResult);
     statMock.mockResolvedValue({ size: 24, mtimeMs: 1700000000000 } as never);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("includes untracked text file line counts in stats", async () => {
@@ -105,5 +111,54 @@ describe("getChangedFiles", () => {
     expect(files).toHaveLength(1);
     expect(files[0]?.path).toBe("src/new-binary.bin");
     expect(files[0]?.stats).toEqual({ additions: null, deletions: null });
+  });
+
+  it("reuses cached changed files while status signature is unchanged", async () => {
+    getStatusEntriesMock.mockResolvedValue([
+      {
+        path: "src/new-file.ts",
+        staged: false,
+        unstaged: true,
+        untracked: false,
+      },
+    ]);
+
+    toChangedFilesMock.mockReturnValue([
+      {
+        path: "src/new-file.ts",
+        status: "unstaged",
+      },
+    ]);
+
+    const first = await getChangedFiles();
+    const second = await getChangedFiles();
+
+    expect(second).toEqual(first);
+    expect(execGitMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("caps expensive untracked file line counting and returns unknown stats for overflow entries", async () => {
+    const untrackedEntries = Array.from({ length: 26 }, (_, index) => ({
+      path: `src/new-${index + 1}.ts`,
+      staged: false,
+      unstaged: false,
+      untracked: true,
+    }));
+
+    getStatusEntriesMock.mockResolvedValue(untrackedEntries);
+    toChangedFilesMock.mockReturnValue(
+      untrackedEntries.map((entry) => ({
+        path: entry.path,
+        status: "untracked",
+      })),
+    );
+    readFileMock.mockResolvedValue(Buffer.from("line one\nline two\n"));
+
+    const files = await getChangedFiles();
+
+    expect(files).toHaveLength(26);
+    expect(files[0]?.stats).toEqual({ additions: 2, deletions: 0 });
+    expect(files[24]?.stats).toEqual({ additions: null, deletions: null });
+    expect(files[25]?.stats).toEqual({ additions: null, deletions: null });
   });
 });
