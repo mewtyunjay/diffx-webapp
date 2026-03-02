@@ -14,7 +14,14 @@ type FilesTabProps = {
 };
 
 const STATUS_ORDER: ChangedFileStatus[] = ["staged", "unstaged", "untracked"];
-const MAX_DISPLAY_PATH_CHARS = 32;
+const MAX_FILE_NAME_CHARS = 32;
+const MAX_PSEUDO_PATH_CHARS = 38;
+const COLLISION_CONTEXT_PADDING_SEGMENTS = 3;
+
+type DisplayLabel = {
+  name: string;
+  pseudoPath: string | null;
+};
 
 type PathToken = {
   key: string;
@@ -45,7 +52,35 @@ function truncateMiddle(text: string, maxChars: number): string {
   return `${text.slice(0, left)}...${text.slice(text.length - right)}`;
 }
 
-function buildDisplayPathMap(files: ChangedFile[]): Map<string, string> {
+function parentPathFromPath(value: string): string | null {
+  const segments = splitPathSegments(value);
+  if (segments.length <= 1) {
+    return null;
+  }
+
+  return segments.slice(0, -1).join("/");
+}
+
+function toPseudoPathLabel(path: string | null): string | null {
+  if (!path) {
+    return null;
+  }
+
+  return truncateMiddle(`.../${path}`, MAX_PSEUDO_PATH_CHARS);
+}
+
+function toDisplayLabel(path: string, candidatePath?: string): DisplayLabel {
+  const targetPath = candidatePath ?? path;
+  const segments = splitPathSegments(path);
+  const basename = basenameFromSegments(segments, path);
+
+  return {
+    name: truncateMiddle(basename, MAX_FILE_NAME_CHARS),
+    pseudoPath: toPseudoPathLabel(parentPathFromPath(targetPath)),
+  };
+}
+
+function buildDisplayPathMap(files: ChangedFile[]): Map<string, DisplayLabel> {
   const byBasename = new Map<string, PathToken[]>();
 
   for (const file of files) {
@@ -58,19 +93,18 @@ function buildDisplayPathMap(files: ChangedFile[]): Map<string, string> {
     byBasename.set(basename, bucket);
   }
 
-  const displayMap = new Map<string, string>();
+  const displayMap = new Map<string, DisplayLabel>();
 
   for (const group of byBasename.values()) {
     if (group.length === 1) {
       const only = group[0];
-      const basename = basenameFromSegments(only.segments, only.path);
-      displayMap.set(only.key, truncateMiddle(basename, MAX_DISPLAY_PATH_CHARS));
+      displayMap.set(only.key, toDisplayLabel(only.path));
       continue;
     }
 
     for (const item of group) {
       const maxDepth = item.segments.length;
-      let candidate = item.path;
+      let resolvedDepth = maxDepth;
 
       for (let depth = 2; depth <= maxDepth; depth += 1) {
         const suffix = getSuffix(item.segments, depth);
@@ -80,12 +114,13 @@ function buildDisplayPathMap(files: ChangedFile[]): Map<string, string> {
         });
 
         if (!hasCollision) {
-          candidate = suffix;
+          resolvedDepth = Math.min(maxDepth, depth + COLLISION_CONTEXT_PADDING_SEGMENTS);
           break;
         }
       }
 
-      displayMap.set(item.key, truncateMiddle(candidate, MAX_DISPLAY_PATH_CHARS));
+      const candidate = getSuffix(item.segments, resolvedDepth);
+      displayMap.set(item.key, toDisplayLabel(item.path, candidate));
     }
   }
 
@@ -179,6 +214,7 @@ export function FilesTab({
                   const pendingMutation = pendingMutationsByPath.get(file.path);
                   const actionLabel = isStaged ? "-" : "+";
                   const actionIntent = isStaged ? "unstage" : "stage";
+                  const label = displayPathByFile.get(fileKey(file)) ?? toDisplayLabel(file.path);
 
                   return (
                     <li key={`${file.status}:${file.path}`} className={active ? "file-row file-row-active" : "file-row"}>
@@ -189,7 +225,14 @@ export function FilesTab({
                         title={file.path}
                       >
                         <DiffStatBadge additions={stats?.additions ?? null} deletions={stats?.deletions ?? null} />
-                        <span className="file-row-name">{displayPathByFile.get(fileKey(file)) ?? file.path}</span>
+                        <span className="file-row-label">
+                          <span className="file-row-name">{label.name}</span>
+                          {label.pseudoPath ? (
+                            <span className="file-row-path-meta" aria-hidden>
+                              {label.pseudoPath}
+                            </span>
+                          ) : null}
+                        </span>
                       </button>
 
                       <button

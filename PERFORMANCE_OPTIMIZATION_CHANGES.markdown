@@ -9,6 +9,23 @@
 ## Goal addressed
 Improve perceived and actual responsiveness across Git-backed backend endpoints and frontend loading/mutation flows, especially stage/unstage bursts and diff/session UX instability.
 
+## Additional UI enhancement (post-plan implementation)
+
+### Zed-style pseudo full path next to filenames in Files tab
+- Files:
+  - `frontend/src/components/sidebar/tabs/FilesTab.tsx`
+  - `frontend/src/App.css`
+  - `frontend/src/components/sidebar/tabs/FilesTab.test.tsx`
+- What changed:
+  - file rows now render a two-part inline label:
+    - primary: basename (e.g. `index.ts`)
+    - secondary: dimmed pseudo full parent path (e.g. `.../src/features/gantt/panels`)
+  - collision handling keeps extra context segments so duplicate basenames remain distinguishable while still looking like a pseudo full path.
+  - secondary path text is visually subordinate (smaller/dimmer), single-line truncated, and does not affect existing row action accessibility labels.
+- Tests added:
+  - duplicate basename pseudo-path rendering
+  - root-level file rendering (no pseudo path metadata)
+
 ## Backend changes
 
 ### 1) Status cache window widened + retained in-flight dedupe
